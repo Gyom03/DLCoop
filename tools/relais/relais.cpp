@@ -1,4 +1,4 @@
-// relais — serveur relais Internet du lanceur DLCoop : coop Dying Light 1.55 sans VPN ni mode en ligne Steam.
+// relais — the DLCoop launcher's Internet relay server: Dying Light 1.55 co-op without a VPN or Steam online mode.
 //
 // Same principle as tools/fantome/src/pont.cpp, in a star: each player (the DLCoop launcher, the "agent") connects
 // to the relay over UDP, from home (outbound connection: no port to open on routers). The relay assigns
@@ -9,25 +9,25 @@
 // passwords: --mots-de-passe a,b or RELAIS_MOTS_DE_PASSE (empty = any password opens its own session).
 //
 // Protocol (20-byte header, little-endian, see tools/relais/README.md and tools/dlcoop/Relay.cs):
-//   JOIN      agent -> relais   token = nonce de l'agent, aux = version (1 ou 2), charge = mot de passe
-//   WELCOME   relais -> agent   token = jeton de session de l'agent
-//   REFUSED   relais -> agent   aux = raison (1 mot de passe, 2 relais plein, 3 version), token = nonce
+//   JOIN      agent -> relay    token = the agent's nonce, aux = version (1 or 2), payload = password
+//   WELCOME   relay -> agent    token = the agent's session token
+//   REFUSED   relay -> agent    aux = reason (1 password, 2 relay full, 3 version), token = nonce
 //   CLAIM     agent -> relay    src = desired address (0xFF: the first free one), aux = request number
 //   SLOT      relay -> agent    src = assigned address (0xFF: session full), aux = request number
 //   RELEASE   agent -> relay    src = released address (game instance closed)
-//   KEEPALIVE agent -> relais   toutes les 2 s (maintient aussi le passage dans la box de l'agent) ; v2 : charge
-//                                empty 16 bytes (v2 ROSTER reply of the same size)
-//   ROSTER    relais -> agent   srcPort = adresses actives de la session, dstPort = celles de l'agent (masques
-//                                16-bit); v2: 16-byte payload = the same masks as 64 bits
-//   DATA      dans les deux sens : src, dst, srcPort, dstPort + paquet du jeu
+//   KEEPALIVE agent -> relay    every 2 s (also keeps the path through the agent's router open); v2: a
+//                                16-byte empty payload (v2 ROSTER reply of the same size)
+//   ROSTER    relay -> agent    srcPort = the session's active addresses, dstPort = the agent's (16-bit
+//                                masks); v2: 16-byte payload = the same masks as 64 bits
+//   DATA      both ways: src, dst, srcPort, dstPort + the game packet
 //   BYE       agent -> relay    leaving (all its addresses are released)
 // Versions: v1 (DLCoop launcher 1.1) = addresses 0..15; v2 (1.2+) = 0..32. A v1 agent only receives addresses
 // and packets 0..15: the old launchers play among themselves as before, even in a mixed session.
 // An agent silent for 15 s is removed. The relay never replies with a packet larger than the request
 // (no amplification) and replies to nothing without a valid token, except JOIN.
 //
-// Compilation : Linux  g++ -O2 -std=c++17 -static -o relais relais.cpp   (Dockerfile fourni)
-//               Windows cl /O2 /std:c++17 /EHsc relais.cpp ws2_32.lib    (essais en local)
+// Build: Linux  g++ -O2 -std=c++17 -static -o relais relais.cpp   (Dockerfile provided)
+//               Windows cl /O2 /std:c++17 /EHsc relais.cpp ws2_32.lib    (local tests)
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -64,15 +64,15 @@ constexpr uint32_t kMagic = 0x31524C44;  // "DLR1"
 constexpr uint8_t kVersionMax = 2;
 constexpr int kSlots = 33;               // v2: addresses 127.0.0.1..33 on the player side (32 players + 1 zombie)
 constexpr int kSlotsV1 = 16;             // v1 : 127.0.0.1..16
-constexpr size_t kRosterV2 = 16;         // charge de ROSTER v2 : deux masques de 64 bits
+constexpr size_t kRosterV2 = 16;         // v2 ROSTER payload: two 64-bit masks
 constexpr uint8_t kNoSlot = 0xFF;
 constexpr uint16_t kDefaultPort = 20300;
 constexpr int kMaxClients = 64;
 constexpr int kMaxRooms = 16;
 constexpr int kTimeoutSeconds = 15;
-constexpr int kMaxPacketsPerSecond = 8000;     // par agent (un PC peut faire tourner plusieurs instances)
+constexpr int kMaxPacketsPerSecond = 8000;     // per agent (one PC can run several instances)
 constexpr int kMaxBytesPerSecond = 8 << 20;    // par agent
-constexpr int kMaxJoinsPerSecond = 10;         // par adresse IP
+constexpr int kMaxJoinsPerSecond = 10;         // per IP address
 constexpr size_t kMaxPassword = 64;
 
 enum : uint8_t { kJoin = 1, kWelcome, kRefused, kClaim, kSlot, kRelease, kKeepalive, kRoster, kData, kBye };
@@ -254,7 +254,7 @@ int FindOrCreateRoom(const std::string& password)
 
 void HandleJoin(const sockaddr_in& from, const Header& h, const char* payload, size_t n)
 {
-    // Limite par adresse IP (essais de mots de passe).
+    // Per-IP-address limit (password attempts).
     static std::map<uint32_t, int> joins;
     static int64_t joinsWindow = 0;
     const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(Clock::now().time_since_epoch()).count();
@@ -284,7 +284,7 @@ void HandleJoin(const sockaddr_in& from, const Header& h, const char* payload, s
     const int room = FindOrCreateRoom(password);
     if (room == -1) {
         SendHeader(from, kRefused, 0, kBadPassword, h.token);
-        Log("refus : mot de passe inconnu depuis %s", AddrText(from).c_str());
+        Log("refused: unknown password from %s", AddrText(from).c_str());
         return;
     }
     if (room < 0 || static_cast<int>(g_clients.size()) >= kMaxClients) {
@@ -348,7 +348,7 @@ void HandlePacket(const sockaddr_in& from, char* buf, size_t n)
         return;
     c.lastSeen = Clock::now();
     if (!SameEndpoint(c.addr, from)) {  // the agent's router changed port: we follow
-        Log("agent %s : nouvelle adresse %s", AddrText(c.addr).c_str(), AddrText(from).c_str());
+        Log("agent %s: new address %s", AddrText(c.addr).c_str(), AddrText(from).c_str());
         c.addr = from;
     }
     Room& room = g_rooms[c.room];
@@ -430,7 +430,8 @@ int main(int argc, char** argv)
         else if (!std::strcmp(argv[i], "--mots-de-passe") && i + 1 < argc)
             passwords = argv[++i];
         else {
-            std::fprintf(stderr, "usage : relais [--port %u] [--mots-de-passe a,b]\n", kDefaultPort);
+            std::fprintf(stderr, "usage: relais [--port %u] [--mots-de-passe a,b]
+", kDefaultPort);
             return 2;
         }
     }
@@ -472,7 +473,7 @@ int main(int argc, char** argv)
     WSAIoctl(g_sock, _WSAIOW(IOC_VENDOR, 12), &off, sizeof(off), nullptr, 0, &ret, nullptr, nullptr);
 #endif
     Log("relais DLCoop : UDP %u, %s", port,
-        g_allowed.empty() ? "tout mot de passe ouvre une session"
+        g_allowed.empty() ? "any password opens a session"
                           : (std::to_string(g_allowed.size()) + " password(s) accepted").c_str());
 
     std::vector<char> buf(65536);
