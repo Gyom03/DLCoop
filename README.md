@@ -11,6 +11,9 @@
 - **Just one launcher** — install, set options, play.
 - **Free.**
 
+Includes everything you need: **`coop6.dll`** (the mod), **`DLCoop.exe`** (the Windows launcher that installs it
+and starts the game) and a small **relay server** to play over the Internet with no VPN and no port forwarding.
+
 Personal mod, **not affiliated with Techland**.
 
 ## Play
