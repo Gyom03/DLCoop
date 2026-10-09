@@ -1,10 +1,10 @@
-"""Faux joueur distant pour tester un vrai jeu lancé par DLCoop en mode relais, avec un seul PC.
+"""Fake remote player to test a real game launched by DLCoop in relay mode, with a single PC.
 
-    python tests/relais/faux_joueur.py <ip[:port]> <mot_de_passe> [durée_s=120]
+    python tests/relais/faux_joueur.py <ip[:port]> <password> [duration_s=120]
 
-Rejoint la session, prend une adresse, se maintient, et compte les paquets DATA reçus des jeux de la session
-(src, port de destination, taille). Le jeu local voit cette adresse comme une instance présente (l'agent de DLCoop
-tient son verrou et ses ports) et doit donc lui envoyer ses annonces de découverte (port 20111) via le relais.
+Joins the session, takes an address, keeps alive, and counts the DATA packets received from the session's games
+(src, destination port, size). The local game sees this address as a present instance (the DLCoop agent
+holds its lock and ports) and so must send it its discovery announcements (port 20111) through the relay.
 """
 import collections
 import os
@@ -35,7 +35,7 @@ def main():
             continue
         m, t, src, dst, aux, sp, dp, tok = HDR.unpack_from(d)
         if t == REFUSED:
-            sys.exit("refusé")
+            sys.exit("refused")
         if t == WELCOME:
             token = tok
     while slot is None:
@@ -77,7 +77,7 @@ def main():
     for key, n in sorted(counts.items()):
         print(f"  jeu {key[0]} port {key[1]} -> port {key[2]} : {n} paquets, {sizes[key]} octets")
     if not counts:
-        print("  aucun paquet reçu")
+        print("  no packet received")
 
 
 if __name__ == "__main__":

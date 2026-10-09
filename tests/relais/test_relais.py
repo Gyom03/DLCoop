@@ -1,11 +1,11 @@
-"""Test du relais DLCoop (tools/relais/relais.cpp) sans le jeu : deux agents simulés.
+"""Test of the DLCoop relay (tools/relais/relais.cpp) without the game: two simulated agents.
 
     python tests/relais/test_relais.py <ip[:port]> <mot_de_passe>
 
-Vérifie : refus d'un mauvais mot de passe, JOIN/WELCOME, CLAIM/SLOT, ROSTER poussé, DATA relayé d'un agent à
-l'autre (et pas en sens interdit : adresse source non détenue), RELEASE et BYE (protocole v1, lanceur 1.1) ; puis
-protocole v2 (lanceur 1.2+) : 33 adresses (32 joueurs + 1 zombie), 34e refusée, ROSTER à masques de 64 bits, pas de
-réponse plus grosse que la requête ; session mixte : un agent v1 n'obtient et ne reçoit que les adresses 0..15.
+Checks: refusal of a bad password, JOIN/WELCOME, CLAIM/SLOT, pushed ROSTER, DATA relayed from one agent to
+the other (and not in the forbidden direction: source address not held), RELEASE and BYE (protocol v1, launcher 1.1); then
+protocol v2 (launcher 1.2+): 33 addresses (32 players + 1 zombie), 34th refused, ROSTER with 64-bit masks, no
+reply larger than the request; mixed session: a v1 agent only gets and only receives addresses 0..15.
 """
 import os
 import socket
@@ -57,7 +57,7 @@ class Agent:
     def claim_raw(self, req):
         self.send(CLAIM, src=0xFF, aux=req)
         r = self.recv({SLOT})
-        assert r and r[3] == req, f"CLAIM sans réponse : {r}"
+        assert r and r[3] == req, f"CLAIM with no reply: {r}"
         return r[1]
 
     def claim(self, req):
@@ -78,20 +78,20 @@ def main():
 
     def check(cond, what):
         nonlocal ok
-        print(("OK    " if cond else "ÉCHEC ") + what)
+        print(("OK    " if cond else "FAIL  ") + what)
         ok &= bool(cond)
 
     bad = Agent(server, password + "x")
     r = bad.join()
-    check(r and r[0] == REFUSED and r[3] == 1, "mauvais mot de passe refusé")
+    check(r and r[0] == REFUSED and r[3] == 1, "bad password refused")
 
     a, b = Agent(server, password), Agent(server, password)
     t0 = time.time()
-    check(a.join() and a.token, f"agent A accepté ({(time.time() - t0) * 1000:.0f} ms aller-retour compris)")
-    check(b.join() and b.token, "agent B accepté")
+    check(a.join() and a.token, f"agent A accepted ({(time.time() - t0) * 1000:.0f} ms round-trip included)")
+    check(b.join() and b.token, "agent B accepted")
     sa, sb = a.claim(1), b.claim(2)
-    check(sa != sb, f"adresses attribuées : A={sa}, B={sb}")
-    def latest_roster(agent):  # des ROSTER poussés plus tôt peuvent attendre dans la file : le plus récent compte
+    check(sa != sb, f"addresses assigned: A={sa}, B={sb}")
+    def latest_roster(agent):  # ROSTERs pushed earlier may wait in the queue: the most recent counts
         r, last = None, agent.recv({ROSTER})
         while last:
             r, last = last, agent.recv({ROSTER}, 1.0)
@@ -100,30 +100,30 @@ def main():
     a.send(KEEPALIVE)
     r = latest_roster(a)
     check(r and (r[4] >> sb) & 1 and (r[5] >> sa) & 1 and not (r[5] >> sb) & 1,
-          f"ROSTER de A : actives={r and bin(r[4])}, à A={r and bin(r[5])}")
+          f"ROSTER of A: active={r and bin(r[4])}, to A={r and bin(r[5])}")
 
     payload = b"paquet du jeu " + os.urandom(8)
     t0 = time.time()
     a.send(DATA, src=sa, dst=sb, sp=20101, dp=20111, payload=payload)
     r = b.recv({DATA})
     check(r and r[1] == sa and r[2] == sb and r[4] == 20101 and r[5] == 20111 and r[7] == payload,
-          f"DATA A -> B relayé intact ({(time.time() - t0) * 1000:.0f} ms)")
+          f"DATA A -> B relayed intact ({(time.time() - t0) * 1000:.0f} ms)")
     a.send(DATA, src=sb, dst=sa, sp=20101, dp=20101, payload=b"usurpation")
-    check(a.recv({DATA}, 1.0) is None and b.recv({DATA}, 0.5) is None, "DATA avec une adresse source non détenue jeté")
+    check(a.recv({DATA}, 1.0) is None and b.recv({DATA}, 0.5) is None, "DATA with a source address not held is dropped")
 
     a.send(RELEASE, src=sa)
     r = latest_roster(b)
-    check(r and not (r[4] >> sa) & 1, "RELEASE : l'adresse de A disparaît du ROSTER de B")
+    check(r and not (r[4] >> sa) & 1, "RELEASE: A's address disappears from B's ROSTER")
     a.send(BYE)
     b.send(BYE)
     time.sleep(0.3)
 
-    # --- v2 : 33 adresses ; session mixte avec un agent v1 ---------------------------------------------------
+    # --- v2: 33 addresses; mixed session with a v1 agent ---------------------------------------------------
     d = Agent(server, password, version=1)
     c = Agent(server, password, version=2)
-    check(d.join() and d.token, "agent v1 accepté")
+    check(d.join() and d.token, "v1 agent accepted")
     r = c.join()
-    check(r and r[0] == WELCOME and r[3] == 2 and c.token, "agent v2 accepté (WELCOME version 2)")
+    check(r and r[0] == WELCOME and r[3] == 2 and c.token, "v2 agent accepted (WELCOME version 2)")
     sd = d.claim(1)
     mine = []
     for req in range(1, 40):
@@ -132,18 +132,18 @@ def main():
             break
         mine.append(slot)
     check(len(mine) == 32 and max(mine) == 32 and sd not in mine and sd < 16,
-          f"v2 : {len(mine)} adresses obtenues (max {max(mine) if mine else None}), la 34e refusée ; v1 : {sd}")
+          f"v2: {len(mine)} addresses obtained (max {max(mine) if mine else None}), the 34th refused; v1: {sd}")
     c.drain()
     c.send(KEEPALIVE, payload=bytes(16))
     r = c.recv({ROSTER})
     full = r and len(r[7]) == 16
     active, own = struct.unpack("<QQ", r[7]) if full else (0, 0)
     check(full and active == (1 << 33) - 1 and own == sum(1 << i for i in mine),
-          f"ROSTER v2 : masques de 64 bits en charge (actives {bin(active).count('1')}, à l'agent {bin(own).count('1')})")
+          f"ROSTER v2: 64-bit masks in payload (active {bin(active).count('1')}, to the agent {bin(own).count('1')})")
     c.drain()
     c.send(KEEPALIVE)
     r = c.recv({ROSTER})
-    check(r and len(r[7]) == 0, "KEEPALIVE v2 sans charge : réponse de 20 octets seulement (pas d'amplification)")
+    check(r and len(r[7]) == 0, "KEEPALIVE v2 with no payload: a 20-byte reply only (no amplification)")
     d.drain()
     d.send(KEEPALIVE)
     r = d.recv({ROSTER})
@@ -151,17 +151,17 @@ def main():
           f"ROSTER v1 : masques de 16 bits (actives {r and hex(r[4])})")
     check(d.claim_raw(50) == 0xFF, "v1 : plus d'adresse 0..15 libre -> session pleine pour lui")
     low, high = min(mine), max(mine)
-    c.send(DATA, src=high, dst=sd, sp=20101, dp=20101, payload=b"haute")
-    check(d.recv({DATA}, 1.0) is None, f"DATA depuis l'adresse {high} (>= 16) non transmis à l'agent v1")
-    c.send(DATA, src=low, dst=sd, sp=20101, dp=20101, payload=b"basse")
+    c.send(DATA, src=high, dst=sd, sp=20101, dp=20101, payload=b"high")
+    check(d.recv({DATA}, 1.0) is None, f"DATA from address {high} (>= 16) not forwarded to the v1 agent")
+    c.send(DATA, src=low, dst=sd, sp=20101, dp=20101, payload=b"low")
     r = d.recv({DATA})
-    check(r and r[1] == low and r[7] == b"basse", f"DATA depuis l'adresse {low} transmis à l'agent v1")
+    check(r and r[1] == low and r[7] == b"low", f"DATA from address {low} forwarded to the v1 agent")
     d.send(DATA, src=sd, dst=high, sp=20101, dp=20101, payload=b"vers haute")
     r = c.recv({DATA})
     check(r and r[2] == high and r[7] == b"vers haute", f"DATA v1 -> adresse {high} de l'agent v2 transmis")
     c.send(BYE)
     d.send(BYE)
-    print("CONFORME" if ok else "NON CONFORME")
+    print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 
 
