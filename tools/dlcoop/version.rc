@@ -1,7 +1,7 @@
-// Informations de version des DLL du paquet DLCoop (Propriétés > Détails dans l'explorateur de Windows).
-// Valeurs dans dlcoop_info.h, écrit par build.ps1 pour chaque DLL (version : <Version> de DLCoop.csproj).
-// Aucune DLL ne se présente comme un composant de Microsoft ou de Techland : winmm.dll se déclare chargeur de
-// mods DLCoop (un fichier qui usurpe l'identité d'un composant système est justement ce que les antivirus repèrent).
+// Version information for the DLLs in the DLCoop package (Properties > Details in Windows Explorer).
+// Values in dlcoop_info.h, written by build.ps1 for each DLL (version: <Version> from DLCoop.csproj).
+// No DLL claims to be a Microsoft or Techland component: winmm.dll declares itself a DLCoop mod loader
+// (a file that impersonates a system component is exactly what antivirus software flags).
 #include <winver.h>
 #include "dlcoop_info.h"
 

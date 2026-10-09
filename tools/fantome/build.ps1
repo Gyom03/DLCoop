@@ -1,5 +1,5 @@
-﻿# Compile fantome.exe et fantome.dll (MSVC 14.16, CRT statique) -> out\tools\fantome\ (+ fantome.ini d'exemple)
-# Usage : .\tools\fantome\build.ps1 [-Out out\tools\fantome]
+﻿# Build fantome.exe and fantome.dll (MSVC 14.16, static CRT) -> out\tools\fantome\ (+ an example fantome.ini)
+# Usage: .\tools\fantome\build.ps1 [-Out out\tools\fantome]
 param([string] $Out = "out\tools\fantome")
 $ErrorActionPreference = "Stop"
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -11,7 +11,7 @@ $dll = Join-Path $PSScriptRoot "src\fantome_dll.cpp"
 $exe = Join-Path $PSScriptRoot "src\fantome.cpp"
 $pont = Join-Path $PSScriptRoot "src\pont.cpp"
 cmd /c "`"$vcvars`" x64 -vcvars_ver=14.16 >nul 2>nul && cd /d `"$out`" && cl $common /LD `"$dll`" /Fe:fantome.dll /link ws2_32.lib && cl $common `"$exe`" /Fe:fantome.exe /link user32.lib && cl $common `"$pont`" /Fe:pont.exe /link ws2_32.lib"
-if ($LASTEXITCODE -ne 0) { throw "échec de compilation (une instance du jeu verrouille-t-elle fantome.dll ?)" }
+if ($LASTEXITCODE -ne 0) { throw "build failed (is a game instance locking fantome.dll?)" }
 if (-not (Test-Path (Join-Path $out "fantome.ini"))) {
     Copy-Item (Join-Path $PSScriptRoot "fantome.ini.exemple") (Join-Path $out "fantome.ini")
 }

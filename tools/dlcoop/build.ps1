@@ -1,11 +1,11 @@
-﻿# Assemble le paquet DLCoop à distribuer : out\dlcoop\paquet\ + out\dlcoop\DLCoop_<version>.zip
-#   DLCoop.exe (WPF, .NET Framework 4.7.2 intégré à Windows), dlcoop_reseau.dll (source de tools/fantome/src/fantome_dll.cpp),
-#   coop6.dll (mods/coop6), README.txt (anglais). Les DLL sont compilées ici, dans un dossier à part : les instances du jeu en
-#   cours (qui verrouillent out\mods\coop6 et out\tools\fantome) ne gênent pas.
-# Usage : .\tools\dlcoop\build.ps1 [-Relais 203.0.113.10]
-#   -Relais : adresse du relais Internet préremplie dans le lanceur (fichier server.txt du paquet). Le mot de passe de
-#             session n'est jamais mis dans le paquet : il se transmet à part.
-#   -Sortie : dossier de sortie (défaut out\dlcoop ; un autre si le paquet est verrouillé par une partie en cours)
+﻿# Assemble the distributable DLCoop package: out\dlcoop\paquet\ + out\dlcoop\DLCoop_<version>.zip
+#   DLCoop.exe (WPF, .NET Framework 4.7.2), winmm.dll (tools/dlloader), dlcoop_reseau.dll (built from
+#   tools/fantome/src/fantome_dll.cpp), coop6.dll (mods/coop6), README.txt. The DLLs are built here in a separate
+#   folder, so running game instances (which lock out\mods\coop6 and out\tools\fantome) do not interfere.
+# Usage: .\tools\dlcoop\build.ps1 [-Relais 203.0.113.10]
+#   -Relais: Internet relay address pre-filled in the launcher (the package's server.txt file). The session
+#            password is never put in the package: it is shared separately.
+#   -Sortie: output folder (default out\dlcoop; use another if the package is locked by a running game)
 param([string]$Relais = "", [string]$Sortie = "")
 $ErrorActionPreference = "Stop"
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -15,18 +15,18 @@ $paquet = Join-Path $base "paquet"
 Remove-Item $paquet -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $obj, $paquet | Out-Null
 
-# 1. DLL natives (MSVC 14.16, CRT statique : aucun redistribuable Visual C++ à installer)
+# 1. Native DLLs (MSVC 14.16, static CRT: no Visual C++ redistributable to install)
 $vcvars = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
 $reseau = Join-Path $root "tools\fantome\src\fantome_dll.cpp"
 $mod = Join-Path $root "mods\coop6\Coop6Mod.cpp"
 $def = Join-Path $root "mods\coop6\engine_imports.def"
 $flags = "/nologo /O2 /MT /std:c++17 /EHsc /W3 /utf-8 /Brepro"
-# /Brepro (compilateur et éditeur de liens) : compilation reproductible, sans date dans les DLL. Même source = mêmes octets,
-# donc « Update available » (comparaison octet par octet avec le dossier du jeu) ne signale que de vrais changements.
+# /Brepro (compiler and linker): reproducible build, no date in the DLLs. Same source = same bytes, so
+# "Update available" (byte-by-byte comparison with the game folder) only reports real changes.
 
-# 1a. Informations de version des 3 DLL (version.rc ; version = <Version> de DLCoop.csproj, la même que DLCoop.exe).
+# 1a. Version info for the 3 DLLs (version.rc; version = <Version> from DLCoop.csproj, the same as DLCoop.exe).
 $version = ([xml](Get-Content (Join-Path $PSScriptRoot "DLCoop.csproj") -Encoding UTF8)).Project.PropertyGroup.Version
-if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "version illisible dans DLCoop.csproj : $version" }
+if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "unreadable version in DLCoop.csproj: $version" }
 $dlls = @(
     @{ Nom = "winmm"; Desc = "DLCoop mod loader for Dying Light 1.55 (forwards winmm calls to the Windows winmm.dll)" },
     @{ Nom = "dlcoop_reseau"; Desc = "DLCoop network fixes for Dying Light 1.55 (LAN and relay addresses, extra instances)" },
@@ -42,24 +42,24 @@ foreach ($d in $dlls) {
     $rcs += "rc /nologo /c65001 /i `"$dir`" /fo `"$obj\$($d.Nom).res`" `"$PSScriptRoot\version.rc`" >nul"
 }
 cmd /c "`"$vcvars`" x64 -vcvars_ver=14.16 >nul 2>nul && cd /d `"$obj`" && $($rcs -join ' && ')"
-if ($LASTEXITCODE -ne 0) { throw "échec de compilation des informations de version (version.rc)" }
+if ($LASTEXITCODE -ne 0) { throw "failed to build the version info (version.rc)" }
 
 cmd /c "`"$vcvars`" x64 -vcvars_ver=14.16 >nul 2>nul && cd /d `"$obj`" && cl $flags /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_WARNINGS /LD `"$reseau`" dlcoop_reseau.res /Fe:dlcoop_reseau.dll /link /Brepro ws2_32.lib >nul && lib /nologo /def:`"$def`" /machine:x64 /out:engine_imports.lib >nul && cl $flags /LD `"$mod`" coop6.res /Fe:coop6.dll /link /Brepro engine_imports.lib >nul"
-if ($LASTEXITCODE -ne 0) { throw "échec de compilation des DLL" }
+if ($LASTEXITCODE -ne 0) { throw "failed to build the DLLs" }
 
-# 1b. Chargeur de mods winmm.dll (tools/dlloader) : forwarders vers la winmm du système, puis compilation.
+# 1b. The winmm.dll mod loader (tools/dlloader): forwarders to the system winmm, then build.
 $loader = Join-Path $root "tools\dlloader"
 python "$loader\gen_def.py"
-if ($LASTEXITCODE -ne 0) { throw "gen_def.py a échoué (pefile installé ?)" }
+if ($LASTEXITCODE -ne 0) { throw "gen_def.py failed (is pefile installed?)" }
 cmd /c "`"$vcvars`" x64 -vcvars_ver=14.16 >nul 2>nul && cd /d `"$obj`" && cl $flags /DUNICODE /D_UNICODE /I`"$loader`" /LD `"$loader\dllmain.cpp`" winmm.res /Fe:winmm.dll /link /Brepro >nul"
-if ($LASTEXITCODE -ne 0) { throw "échec de compilation de winmm.dll (chargeur)" }
+if ($LASTEXITCODE -ne 0) { throw "failed to build winmm.dll (the loader)" }
 
-# 2. Fenêtre WPF
+# 2. WPF window
 $bin = Join-Path $base "bin"
 & dotnet build (Join-Path $PSScriptRoot "DLCoop.csproj") -c Release -o $bin --nologo -v q | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "échec de compilation de DLCoop.exe" }
+if ($LASTEXITCODE -ne 0) { throw "failed to build DLCoop.exe" }
 
-# 3. Paquet
+# 3. Package
 Copy-Item (Join-Path $bin "DLCoop.exe") $paquet
 Copy-Item (Join-Path $obj "dlcoop_reseau.dll"), (Join-Path $obj "coop6.dll"), (Join-Path $obj "winmm.dll") $paquet
 Copy-Item (Join-Path $PSScriptRoot "README.txt") $paquet
@@ -69,4 +69,4 @@ $zip = Join-Path $base "DLCoop_$version.zip"
 Remove-Item $zip -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $paquet "*") -DestinationPath $zip
 Get-ChildItem $paquet | Select-Object Name, Length
-"Paquet : $zip ($((Get-Item $zip).Length) octets)"
+"Package: $zip ($((Get-Item $zip).Length) bytes)"
