@@ -1,96 +1,91 @@
-# dlloader — chargeur de mods par DLL relais (winmm.dll)
+# dlloader — mod loader via a proxy DLL (winmm.dll)
 
-Charge les mods coop de Dying Light 1.55 **sans injection par un processus extérieur**. But : un
-« produit fini » qui ne déclenche pas les faux positifs des antivirus. Le motif signalé par les antivirus
-n'est pas le mod lui-même, mais la façon de le charger aujourd'hui (`tools/fantome`, `tools/dlcoop`) :
-jeu créé en pause, puis `VirtualAllocEx` / `WriteProcessMemory` / `QueueUserAPC(LoadLibraryW)` dans le
-processus du jeu. Ici, **le jeu charge ses mods tout seul** : aucune écriture dans la mémoire d'un autre
-processus.
+Loads the Dying Light 1.55 co-op mods **without injection by an outside process**. Goal: a "finished product" that does
+not trigger antivirus false positives. What antivirus software flags is not the mod itself, but the old way of loading
+it (`tools/fantome`, `tools/dlcoop` on the `dll-injection` branch): the game is started suspended, then
+`VirtualAllocEx` / `WriteProcessMemory` / `QueueUserAPC(LoadLibraryW)` in the game process. Here, **the game loads its
+mods by itself**: nothing is written into another process's memory.
 
-## Principe
+## Principle
 
-`engine_x64_rwdi.dll` et `gamedll_x64_rwdi.dll` **importent `winmm.dll`** (vérifié). En posant une
-`winmm.dll` dans le dossier du jeu, le chargeur de Windows la prend avant celle du système (`winmm`
-n'est pas une « KnownDLL » protégée — vérifié). C'est la technique classique des chargeurs de mods
-(DLML utilise `dsound.dll`, Ultimate ASI Loader utilise `winmm`/`version`/…).
+`engine_x64_rwdi.dll` and `gamedll_x64_rwdi.dll` **import `winmm.dll`** (verified). By placing a `winmm.dll` in the game
+folder, the Windows loader picks it before the system one (`winmm` is not a protected "KnownDLL" — verified). This is
+the classic mod-loader technique (DLML uses `dsound.dll`, Ultimate ASI Loader uses `winmm`/`version`/…).
 
-Notre `winmm.dll` relais :
+Our proxy `winmm.dll`:
 
-1. **réexpédie** tous ses exports (181) vers la vraie `winmm` du système, par son chemin absolu
-   `\\.\GLOBALROOT\SystemRoot\System32\winmm` (forwarders générés dans `winmm_exports.h`). Le jeu garde
-   donc un `winmm` pleinement fonctionnel, et **rien n'est à copier** à côté (pas de `winmm_real.dll`) ;
-2. au chargement, lit `dlmods.ini` (à côté d'elle) :
-   - section `[env]` : chaque `CLE=VALEUR` devient une **variable d'environnement** du processus du jeu ;
-   - section `[loader]`, clé `Mods=` : les **DLL de mods** à charger, dans l'ordre (défaut
-     `dlcoop_reseau.dll;coop6.dll`) ;
-3. charge ces DLL depuis son propre dossier.
+1. **forwards** all of its exports (181) to the real system `winmm`, by its absolute path
+   `\\.\GLOBALROOT\SystemRoot\System32\winmm` (forwarders generated in `winmm_exports.h`). The game keeps a fully
+   functional `winmm`, and **nothing has to be copied** next to it (no `winmm_real.dll`);
+2. on load, it reads `dlmods.ini` (next to it):
+   - section `[env]`: each `KEY=VALUE` becomes an **environment variable** of the game process;
+   - section `[loader]`, key `Mods=`: the **mod DLLs** to load, in order (default `dlcoop_reseau.dll;coop6.dll`);
+3. loads those DLLs from its own folder.
 
-Les mods ne changent pas : `coop6.dll` lit déjà `COOP6_<CLÉ>` en priorité puis `coop6.ini` ;
-`dlcoop_reseau.dll` lit les `DLF_*`. Le relais pose ces variables à partir de `[env]` **seulement si elles
-sont absentes** : les valeurs par instance posées par le lanceur (héritées par le jeu) priment ; le fichier
-sert pour un lancement direct (Steam).
+The mods are unchanged: `coop6.dll` already reads `COOP6_<KEY>` first, then `coop6.ini`; `dlcoop_reseau.dll` reads the
+`DLF_*`. The proxy sets those variables from `[env]` **only if they are absent**: the per-instance values set by the
+launcher (inherited by the game) win; the file is used for a direct launch (Steam).
 
-**Moment du chargement** : `winmm` est chargée pendant la résolution des imports statiques (verrou du chargeur
-tenu, imports pas tous résolus) : trop tôt. Le relais détourne donc le **point d'entrée de l'exe** (12 octets
-`mov rax, EntryHook ; jmp rax`, remis à l'origine dès l'appel) : les mods sont chargés sur le fil principal,
-juste avant la 1re instruction du jeu — le même moment que l'ancienne injection par APC. Indispensable pour les
-instances supplémentaires (le verrou `Global\ChromeEngine4DIMutex` doit être renommé avant que le jeu le
-prenne). La 1re version (1.3.0) chargeait les mods dans un fil : le jeu gagnait la course (0/20 au test
-`tests/dlloader/run.ps1`) ; avec le point d'entrée : 20/20. Si `winmm` est chargée tard (LoadLibrary), repli
-sur un fil.
+**When loading happens**: `winmm` is loaded during static import resolution (the loader lock is held, not all imports
+resolved): too early. So the proxy hooks the **exe's entry point** (12 bytes `mov rax, EntryHook ; jmp rax`, restored as
+soon as it is called): the mods are loaded on the main thread, right before the game's first instruction — the same
+moment as the old APC injection. Essential for additional instances (the `Global\ChromeEngine4DIMutex` lock must be
+renamed before the game takes it). The first version (1.3.0) loaded the mods on a thread: the game won the race (0/20 in
+the `tests/dlloader/run.ps1` test); with the entry point: 20/20. If `winmm` is loaded late (`LoadLibrary`), it falls
+back to a thread.
 
-## Fichiers
+## Files
 
-| Fichier | Rôle | Versionné |
+| File | Role | Versioned |
 |---|---|---|
-| `gen_def.py` | Lit la `winmm` du système, écrit `winmm_exports.h` (forwarders `#pragma … /export:`) | oui |
-| `dllmain.cpp` | Point d'entrée : lit `dlmods.ini`, pose `[env]`, charge les mods | oui |
-| `build.ps1` | Génère l'en-tête puis compile `winmm.dll` (MSVC 14.16, `/MT`) → `out\tools\dlloader\` | oui |
-| `dlmods.ini.exemple` | Modèle de configuration | oui |
-| `winmm_exports.h` | Généré par `gen_def.py` | non (régénérable) |
+| `gen_def.py` | Reads the system `winmm`, writes `winmm_exports.h` (forwarders `#pragma … /export:`) | yes |
+| `dllmain.cpp` | Entry point: reads `dlmods.ini`, sets `[env]`, loads the mods | yes |
+| `build.ps1` | Generates the header then builds `winmm.dll` (MSVC 14.16, `/MT`) → `out\tools\dlloader\` | yes |
+| `dlmods.ini.exemple` | Configuration template | yes |
+| `winmm_exports.h` | Generated by `gen_def.py` | no (regenerable) |
 
-## Compiler
+## Build
 
 ```powershell
 .\tools\dlloader\build.ps1
 ```
 
-Sort `out\tools\dlloader\winmm.dll` (~124 Ko, 181 forwarders x64) et `dlmods.ini` (copie de l'exemple si
-absent).
+Produces `out\tools\dlloader\winmm.dll` (~124 KB, 181 x64 forwarders) and `dlmods.ini` (a copy of the example if
+missing).
 
-## Installer (dossier du jeu)
+## Install (game folder)
 
-Dans le dossier du jeu (`…\Dying Light\`), poser :
+In the game folder (`…\Dying Light\`), place:
 
-- `winmm.dll` (le relais) ;
-- `dlmods.ini` (la config) ;
-- les DLL de mods citées dans `dlmods.ini` (`dlcoop_reseau.dll`, `coop6.dll`).
+- `winmm.dll` (the proxy);
+- `dlmods.ini` (the config);
+- the mod DLLs listed in `dlmods.ini` (`dlcoop_reseau.dll`, `coop6.dll`).
 
-> **Attention au `dsound.dll` de DLML** s'il est présent : il n'entre pas en conflit (nom différent), mais s'il
-> est actif il peut agir sur le lobby. Pour la coop, désactiver DLML (renommer `dsound.dll`).
+> **Watch out for DLML's `dsound.dll`** if present: it does not clash (different name), but if it is active it may affect
+> the lobby. For co-op, disable DLML (rename `dsound.dll`).
 
-Lancer le jeu normalement (raccourci, Steam, ou le lanceur). Rien d'autre.
+Launch the game normally (shortcut, Steam, or the launcher). Nothing else.
 
-## Désinstaller
+## Uninstall
 
-Supprimer `winmm.dll`, `dlmods.ini` et les DLL de mods du dossier du jeu. Le jeu retrouve la `winmm` du
-système automatiquement.
+Delete `winmm.dll`, `dlmods.ini` and the mod DLLs from the game folder. The game goes back to the system `winmm`
+automatically.
 
-## Lanceur DLCoop (fait, 1.3.x)
+## DLCoop launcher (done, 1.3.x)
 
-- **Install mod** : copie `winmm.dll`, `dlcoop_reseau.dll`, `coop6.dll` dans le dossier du jeu ; **Launch** le fait
-  aussi si les fichiers manquent **ou diffèrent** de ceux du lanceur (mise à jour automatique).
-- **Launch** : pose les variables par instance (`DLF_INDEX`, adresse du relais, journal…) dans l'environnement du
-  jeu, réécrit `dlmods.ini` (réglages d'un lancement simple : instance principale, sans adresse de relais), lance le
-  jeu normalement. Plusieurs instances sur un PC : chacune garde ses propres valeurs (elles priment sur le fichier).
-- **Uninstall mod** : retire les trois DLL et `dlmods.ini` (DLML n'est pas touché).
+- **Install mod**: copies `winmm.dll`, `dlcoop_reseau.dll`, `coop6.dll` into the game folder; **Launch** also does it if
+  the files are missing **or differ** from the launcher's (automatic update).
+- **Launch**: sets the per-instance variables (`DLF_INDEX`, relay address, log…) in the game's environment, rewrites
+  `dlmods.ini` (settings for a plain launch: main instance, no relay address), launches the game normally. Several
+  instances on one PC: each keeps its own values (they win over the file).
+- **Uninstall mod**: removes the three DLLs and `dlmods.ini` (DLML is not touched).
 
-## Validé (2026-10-09)
+## Validated
 
-- Renvoi `\.\GLOBALROOT\SystemRoot\System32\winmm` résolu sans récursion (modules du jeu : notre `WINMM.dll` +
-  la winmm du système).
-- Les deux mods chargés et tous les correctifs posés : lancement par la fenêtre, par `DLCoop.exe /launch` et
-  **par Steam** sans lanceur.
-- Partie coop à 2 PC par le relais Internet (VPS) ; puis 3 joueurs (2 instances sur le PC 1 + PC 2) avec le
-  chargeur 1.3.1 (verrou renommé pour l'instance supplémentaire, identité Steam dérivée).
-- Microsoft Defender : aucune menace sur le paquet.
+- The `\\.\GLOBALROOT\SystemRoot\System32\winmm` forward resolves without recursion (game modules: our `WINMM.dll` + the
+  system winmm).
+- Both mods loaded and all patches applied: launched from the window, from `DLCoop.exe /launch`, and **from Steam**
+  without the launcher.
+- Co-op game across 2 PCs over the Internet relay (VPS); then 3 players (2 instances on PC 1 + PC 2) with the 1.3.1
+  loader (lock renamed for the additional instance, derived Steam identity).
+- Microsoft Defender: no threat found in the package.

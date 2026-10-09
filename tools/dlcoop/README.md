@@ -1,52 +1,47 @@
-# DLCoop — lanceur du mod coop (paquet à distribuer)
+# DLCoop — the co-op mod launcher (distributable package)
 
-Fenêtre WPF (`DLCoop.exe`, ~50 Ko), **entièrement en anglais**, qui installe / désinstalle
-le mod dans le dossier du jeu et lance Dying Light 1.55. **Sans injection** (depuis la 1.3.0) : le chargeur `winmm.dll`
-(`tools/dlloader`) posé dans le dossier du jeu est chargé par le jeu lui-même et charge `dlcoop_reseau.dll` et
-`coop6.dll` ; le lanceur écrit les réglages dans `dlmods.ini` et lance le jeu normalement (le mod marche aussi lancé
-par Steam). **Aucune dépendance** : .NET Framework 4.7.2, composant de Windows 10 (1803+) et 11 ; DLL en CRT statique
-(`/MT`). `tools/fantome` (outil de développement) garde l'ancienne méthode (jeu créé en pause + APC `LoadLibraryW`).
+A WPF window (`DLCoop.exe`, ~50 KB), **entirely in English**, that installs / uninstalls the mod in the game folder and
+launches Dying Light 1.55. **No injection** (since 1.3.0): the `winmm.dll` loader (`tools/dlloader`) placed in the game
+folder is loaded by the game itself and loads `dlcoop_reseau.dll` and `coop6.dll`; the launcher writes the settings to
+`dlmods.ini` and launches the game normally (the mod also works when launched via Steam). **No dependency**: .NET
+Framework 4.7.2, a component of Windows 10 (1803+) and 11; DLLs statically link the CRT (`/MT`). `tools/fantome` (a
+development tool) keeps the old method (game started suspended + `LoadLibraryW` APC).
 
-## Compiler le paquet
+## Build the package
 ```powershell
-.\tools\dlcoop\build.ps1     # -> out\dlcoop\paquet\ et out\dlcoop\DLCoop_<version>.zip (~190 Ko)
+.\tools\dlcoop\build.ps1     # -> out\dlcoop\paquet\ and out\dlcoop\DLCoop_<version>.zip
 ```
-Les DLL sont compilées dans `out\dlcoop\obj` (pas de conflit avec les instances en cours qui verrouillent
-`out\mods\coop6` et `out\tools\fantome`).
+The DLLs are built in `out\dlcoop\obj` (no clash with running instances that lock `out\mods\coop6` and
+`out\tools\fantome`).
 
-| Fichier | Source |
+| File | Source |
 |---|---|
-| `DLCoop.exe` | `tools/dlcoop/*.cs`, `*.xaml` (`DLCoop.csproj`, x64 obligatoire : adresse de `LoadLibraryW` lue dans ce processus) |
-| `dlcoop_reseau.dll` | `tools/fantome/src/fantome_dll.cpp` (correctif « port 0 » de la 1.55, pseudo, instance supplémentaire, adresses 127.0.0.N) |
+| `DLCoop.exe` | `tools/dlcoop/*.cs`, `*.xaml` (`DLCoop.csproj`, x64 required) |
+| `winmm.dll` | `tools/dlloader/dllmain.cpp` (the mod loader) |
+| `dlcoop_reseau.dll` | `tools/fantome/src/fantome_dll.cpp` (1.55 "port 0" fix, display name, additional instances, `127.0.0.N` addresses) |
 | `coop6.dll` | `mods/coop6/Coop6Mod.cpp` |
-| `README.txt` | notice pour les joueurs (en anglais) |
+| `README.txt` | the player-facing notice (in English) |
 
-## Fonctionnement
-- **Jeu** : vérifié à chaque démarrage (`Launcher.CheckInstallation`) : chemin mémorisé gardé s'il existe et qu'il
-  est en 1.55 ; sinon recherche (clé de désinstallation « Steam App 239140 », `libraryfolders.vdf`,
-  `appmanifest_239140.acf`), préférence à une installation 1.55, nouveau chemin enregistré et signalé s'il a bougé.
-  « Change… » enregistre aussitôt le chemin choisi.
-- **Fenêtre simplifiée** : visibles seulement l'emplacement du jeu, l'adresse du serveur et
-  le mot de passe de session, puis « Launch » ; le reste dans trois menus dépliants fermés (style `Expander` sombre
-  dans `App.xaml`) : « Player name » (pseudo masqué, `DLF_NOM`), « Instance » (principale / supplémentaire
-  `DLF_INDEX`, plusieurs instances sur ce PC
-  `DLF_LOOPBACK`) et « More options » (« Max players when I host » 2..32, mémorisé : `COOP6_Places` = valeur + 1 pour le zombie ;
-  « Disable the EOS connection » `COOP6_SansEos` ; « Close after launch »).
-  Les choix d'instance reviennent aux valeurs par défaut à chaque démarrage (instance principale, son, textures
-  complètes). Message de réussite réduit à « Game launched. ». Coop jusqu'à 32 joueurs (`Launcher.MaxInstances` = 33 places),
-  difficulté, couleurs, HUD et diagnostic toujours actifs.
-- **Réseau** : plus de choix explicite : serveur renseigné = relais Internet (`Relay.cs`, serveur `tools/relais/`) ; champ vide = réseau local
-  ou VPN (comportement d'origine). Avec le relais, le lanceur devient l'agent du relais (connexion, adresse 0..32 demandée
-  au relais pour chaque jeu lancé et passée par `DLF_ADRESSE`, adresses des joueurs distants occupées en
-  `127.0.0.N`). Il doit rester ouvert pendant la partie : « Close after launch » le réduit, et il se ferme seul
-  quand le dernier jeu se ferme. Adresse du relais préremplie par `server.txt` (`build.ps1 -Relais <ip>`) ; le mot
-  de passe de session n'est jamais dans le paquet. Protocole v2 (33 adresses, masques de 64 bits), repli automatique sur la v1 (16) face à un ancien relais.
-  Une seule fenêtre DLCoop connectée à un relais par PC
-  (`Local\DLCoop_relais`) ; avec le relais, l'identité d'une instance est vérifiée par le verrou du jeu
-  (`Global\ChromeEngine4DIMutex[_fantomeN]`), les verrous `Local\DLFantome_slot_N` désignant des adresses.
-- Choix mémorisés dans `%APPDATA%\DLCoop\settings.txt` ; journaux dans `logs\` à côté de l'exe.
-- Ligne de commande : `DLCoop.exe /launch [/instance N] [/multi] [/name Nom] [/game chemin] [/internet | /lan]
-  [/server adresse] [/password X] [/count N]` (`/internet`, `/lan` forcent le mode ; instances suivantes de `/count`
-  en instances supplémentaires) (sans fenêtre, code de sortie 0 si les deux DLL sont chargées dans le jeu ;
-  avec le relais, le processus reste actif tant qu'un jeu lancé tourne ; `/count N` : N instances à 10 s d'écart).
-- Compatible avec `tools/fantome` et `pont.exe` (mêmes verrous `Local\DLFantome_slot_N`).
+## How it works
+- **Game**: checked on each start (`Launcher.CheckInstallation`): the saved path is kept if it exists and is 1.55;
+  otherwise a search (the "Steam App 239140" uninstall key, `libraryfolders.vdf`, `appmanifest_239140.acf`), preferring
+  a 1.55 install, with the new path saved and flagged if it moved. "Change…" saves the chosen path immediately.
+- **Simplified window**: only the game location, the server address and the session password are visible, plus
+  "Launch"; the rest is in three collapsed expanders (dark `Expander` style in `App.xaml`): "Player name" (hidden
+  display name, `DLF_NOM`), "Instance" (main / additional `DLF_INDEX`, several instances on this PC `DLF_LOOPBACK`) and
+  "More options" ("Max players when I host" 2..32, saved: `COOP6_Places` = value + 1 for the zombie; "Disable the EOS
+  connection" `COOP6_SansEos`; "Close after launch"). Instance choices return to their defaults on each start. Co-op up
+  to 32 players (`Launcher.MaxInstances` = 33 slots); difficulty, colors, HUD and diagnostics always on.
+- **Network**: no explicit choice — a filled-in server = Internet relay (`Relay.cs`, server `tools/relais/`); an empty
+  field = local network or VPN (original behavior). With the relay, the launcher becomes the relay agent (it connects,
+  requests an address 0..32 for each launched game and passes it via `DLF_ADRESSE`, and holds the remote players'
+  addresses on `127.0.0.N`). It must stay open during the game: "Close after launch" minimizes it, and it closes itself
+  when the last game closes. The relay address is pre-filled from `server.txt` (`build.ps1 -Relais <ip>`); the session
+  password is never in the package. Protocol v2 (33 addresses, 64-bit masks), automatic fallback to v1 (16) against an
+  older relay. Only one DLCoop window connected to a relay per PC (`Local\DLCoop_relais`).
+- Choices saved in `%APPDATA%\DLCoop\settings.txt`; logs in `logs\` next to the exe.
+- Command line: `DLCoop.exe /launch [/instance N] [/multi] [/name Name] [/game path] [/internet | /lan]
+  [/server address] [/password X] [/count N]` (`/internet`, `/lan` force the mode; the later instances of `/count` are
+  additional instances). No window; exit code 0 if both DLLs are loaded in the game; with the relay, the process stays
+  alive as long as a launched game runs; `/count N`: N instances 10 s apart.
+- Compatible with `tools/fantome` and `pont.exe` (same `Local\DLFantome_slot_N` locks).

@@ -1,81 +1,82 @@
-# DLCoop — coop massive pour Dying Light 1.55
+# DLCoop — massive co-op for Dying Light 1.55
 
-![Partie coop avec le mod : le joueur au premier plan, les autres joueurs alignés contre un mur, la liste des coéquipiers à gauche](assets/screenshot.png)
+![Co-op session with the mod: the player in the foreground, the other players lined up against a wall, the teammate list on the left](assets/screenshot.png)
 
-**DLCoop** permet de jouer à **Dying Light 1.55** (Steam) en coopération **jusqu'à 32 joueurs** (+ 1 joueur zombie
-en mode « Be the Zombie »), au lieu de 4. Il comprend :
+**DLCoop** lets you play **Dying Light 1.55** (Steam) in co-op with **up to 32 players** (+1 Night Hunter in
+"Be the Zombie" mode), instead of 4. It includes:
 
-- un **mod** (`coop6.dll`) qui lève les limites du jeu (lobby, liste des joueurs, HUD, couleurs, difficulté,
-  apparitions de zombies, rassemblement de mission, Be the Zombie à N chasseurs…) ;
-- un **lanceur** Windows (`DLCoop.exe`) qui installe le mod, le règle et lance le jeu ;
-- un **serveur relais** à installer sur un petit VPS, pour jouer **par Internet sans VPN** ni port à ouvrir ;
-- un outil de **plusieurs instances du jeu sur un même PC** (tests, ou plusieurs joueurs sur une machine).
+- a **mod** (`coop6.dll`) that lifts the game's limits (lobby, player list, HUD, colors, difficulty, zombie
+  spawns, mission gathering, Be the Zombie for any number of hunters…);
+- a Windows **launcher** (`DLCoop.exe`) that installs the mod, configures it and launches the game;
+- a **relay server** to run on a small VPS, to play **over the Internet without a VPN** and without opening any port;
+- a tool to run **several game instances on one PC** (for testing, or several players on one machine).
 
-> **EN** — DLCoop is a co-op mod for Dying Light 1.55 (Steam, Windows) raising the player limit from 4 to 32
-> (+1 Night Hunter). It ships a mod DLL, a launcher (install / settings / launch), a UDP relay server to play over the
-> Internet without a VPN, and a multi-instance tool. The launcher UI is in English; documentation and code comments
-> are in French. Download the latest build from the **Releases** page.
+> **FR** — DLCoop est un mod coop pour Dying Light 1.55 (Steam, Windows) qui porte la limite de 4 à 32 joueurs
+> (+1 chasseur de nuit). Il fournit une DLL de mod, un lanceur (installer / régler / lancer), un serveur relais UDP
+> pour jouer par Internet sans VPN, et un outil multi-instances. L'interface du lanceur est en anglais ; la
+> documentation est en anglais, les commentaires du code sont en français. Téléchargez la dernière version dans
+> **Releases**.
 
-Mod personnel, **non affilié à Techland**. Aucun fichier du jeu n'est fourni ni modifié sur le disque : le mod agit
-en mémoire, après avoir vérifié les octets de la version 1.55.
+Personal mod, **not affiliated with Techland**. No game file is shipped or modified on disk: the mod acts in memory,
+after checking the bytes of version 1.55.
 
-## Jouer (joueurs)
+## Play (players)
 
-1. **Prérequis** : Dying Light **1.55** sur Steam, Windows 10 (1803+) ou 11 en 64 bits. Rien d'autre à installer
-   (le lanceur utilise le .NET Framework intégré à Windows). Si **DLML** est installé (`dsound.dll` dans le dossier du
-   jeu), le désactiver pour la coop (renommer `dsound.dll`).
-2. Télécharger `DLCoop_<version>.zip` dans les **Releases**, le décompresser n'importe où.
-3. Lancer `DLCoop.exe` : le jeu est trouvé automatiquement. **Install mod**, puis renseigner **Server IP** (le
-   relais de votre groupe) et le **mot de passe de session** (le même pour tous), puis **Launch**.
-   Laisser *Server IP* vide pour jouer en réseau local ou par un VPN de type LAN (Radmin VPN…).
-4. L'hôte crée une partie coop ; les autres la rejoignent avec **Quick match**. **Tous** les joueurs, hôte compris,
-   doivent avoir le mod.
+1. **Requirements**: Dying Light **1.55** on Steam, Windows 10 (1803+) or 11, 64-bit. Nothing else to install (the
+   launcher uses the .NET Framework built into Windows). If **DLML** is installed (`dsound.dll` in the game folder),
+   disable it for co-op (rename `dsound.dll`).
+2. Download `DLCoop_<version>.zip` from the **Releases** page and unzip it anywhere.
+3. Run `DLCoop.exe`: the game is found automatically. **Install mod**, then enter **Server IP** (your group's relay)
+   and the **session password** (the same for everyone), then **Launch**. Leave *Server IP* empty to play on a local
+   network or a LAN-style VPN (Radmin VPN…).
+4. The host creates a co-op game; the others join it with **Quick match**. **Every** player, host included, must have
+   the mod.
 
-Plusieurs fenêtres de jeu sur un même PC : *Instance > Additional instance*, puis **Launch** (une identité Steam et une
-adresse par fenêtre). **Uninstall mod** remet le dossier du jeu dans son état d'origine.
+Several game windows on one PC: *Instance > Additional instance*, then **Launch** (one Steam identity and one address
+per window). **Uninstall mod** restores the game folder to its original state.
 
-> **Jamais en partie publique** : Dying Light est protégé par VAC. DLCoop sert aux parties **LAN** (y compris par
-> le relais, que le jeu voit comme un réseau local) ; Steam en mode hors ligne est conseillé.
+> **Never in public matchmaking**: Dying Light is protected by VAC. DLCoop is for **LAN** games (including through the
+> relay, which the game sees as a local network); Steam in offline mode is recommended.
 
-## Contenu du dépôt
+## Repository layout
 
-| Dossier | Contenu | Documentation |
+| Folder | Contents | Documentation |
 |---|---|---|
-| `mods/coop6/` | le mod coop (`coop6.dll`) : liste de toutes les modifications, avec leurs adresses dans la 1.55 | [`mods/coop6/README.md`](mods/coop6/README.md) |
-| `src/` | structures du jeu utilisées par le mod (en-têtes, dispositions vérifiées sur le code machine) | — |
-| `tools/dlcoop/` | le lanceur `DLCoop.exe` (WPF, .NET Framework 4.7.2) et la construction du paquet | [`docs/lanceur.md`](docs/lanceur.md) |
-| `tools/dlloader/` | le chargeur de mods `winmm.dll` (le jeu charge le mod lui-même, sans injection) | [`docs/chargement-des-mods.md`](docs/chargement-des-mods.md) |
-| `tools/relais/` | le serveur relais (C++17, Linux), service systemd, pare-feu, conteneur | [`docs/serveur-relais.md`](docs/serveur-relais.md) |
-| `tools/fantome/` | `dlcoop_reseau.dll` (réseau, identités, instances), `fantome.exe` et `pont.exe` (outils de test) | [`docs/plusieurs-instances.md`](docs/plusieurs-instances.md) |
-| `tests/` | tests sans le jeu : course du chargeur, protocole du relais, installation du mod | — |
-| `docs/` | fonctionnement détaillé, compilation, méthodes de chargement | ci-dessous |
+| `mods/coop6/` | the co-op mod (`coop6.dll`): list of every change, with its address in 1.55 | [`mods/coop6/README.md`](mods/coop6/README.md) |
+| `src/` | game structures used by the mod (headers, layouts verified against the machine code) | — |
+| `tools/dlcoop/` | the `DLCoop.exe` launcher (WPF, .NET Framework 4.7.2) and the package build | [`docs/launcher.md`](docs/launcher.md) |
+| `tools/dlloader/` | the `winmm.dll` mod loader (the game loads the mod by itself, no injection) | [`docs/mod-loading.md`](docs/mod-loading.md) |
+| `tools/relais/` | the relay server (C++17, Linux), systemd service, firewall, container | [`docs/relay-server.md`](docs/relay-server.md) |
+| `tools/fantome/` | `dlcoop_reseau.dll` (network, identities, instances), `fantome.exe` and `pont.exe` (test tools) | [`docs/multiple-instances.md`](docs/multiple-instances.md) |
+| `tests/` | tests without the game: loader race, relay protocol, mod install | — |
+| `docs/` | how it works, building, loading methods | below |
 
 ## Documentation
 
-- [Fonctionnement du lanceur](docs/lanceur.md) : installation, réglages, lancement, relais, plusieurs instances.
-- [Charger des mods dans le jeu](docs/chargement-des-mods.md) : injection de DLL, chargeur `winmm.dll` (façon
-  DLML), DLML lui-même ; pourquoi DLCoop est passé de l'un à l'autre (antivirus).
-- [Compilation](docs/compilation.md) : construire le mod, le chargeur, le lanceur et le serveur ; comment le jeu
-  lui-même a été compilé (et pourquoi c'est important pour le mod).
-- [Le mod coop](docs/mod-coop.md) : les limites du jeu et la façon dont elles sont levées.
-- [Le serveur relais](docs/serveur-relais.md) : principe, installation sur un VPS, protocole.
-- [Plusieurs instances sur un PC](docs/plusieurs-instances.md) : identité Steam, adresses, verrou du jeu.
+- [How the launcher works](docs/launcher.md): install, settings, launch, relay, multiple instances.
+- [Loading mods into the game](docs/mod-loading.md): DLL injection, the `winmm.dll` loader (DLML-style), DLML itself;
+  why DLCoop moved from one to the other (antivirus).
+- [Building](docs/building.md): build the mod, the loader, the launcher and the server; how the game itself was
+  compiled (and why it matters for the mod).
+- [The co-op mod](docs/coop-mod.md): the game's limits and how they are lifted.
+- [The relay server](docs/relay-server.md): principle, VPS install, protocol.
+- [Several instances on one PC](docs/multiple-instances.md): Steam identity, addresses, the game's instance lock.
 
-## Compiler
+## Build
 
-Prérequis : Visual Studio Build Tools 2022 avec l'ensemble d'outils **MSVC v141 (14.16)**, le SDK .NET (pour
-compiler le lanceur), Python 3 avec `pefile`. Puis, dans PowerShell à la racine du dépôt :
+Requirements: Visual Studio Build Tools 2022 with the **MSVC v141 (14.16)** toolset, the .NET SDK (to build the
+launcher), Python 3 with `pefile`. Then, in PowerShell at the repository root:
 
 ```powershell
-.\tools\dlcoop\build.ps1                          # -> out\dlcoop\paquet\ et out\dlcoop\DLCoop_<version>.zip
-.\tools\dlcoop\build.ps1 -Relais 203.0.113.10     # idem, adresse du relais préremplie pour un groupe
+.\tools\dlcoop\build.ps1                          # -> out\dlcoop\paquet\ and out\dlcoop\DLCoop_<version>.zip
+.\tools\dlcoop\build.ps1 -Relais 203.0.113.10     # same, with the relay address pre-filled for a group
 ```
 
-Détails, compilation reproductible et serveur : [`docs/compilation.md`](docs/compilation.md).
+Details, reproducible builds and the server: [`docs/building.md`](docs/building.md).
 
 ## Branches
 
-| Branche | Contenu |
+| Branch | Contents |
 |---|---|
-| `main` | version actuelle : chargeur `winmm.dll`, lanceur 1.3.x (aucune injection de DLL) |
-| `dll-injection` | ancienne version (lanceur 1.2.0) : le lanceur crée le jeu en pause et y injecte les DLL du mod. Conservée pour référence ; signalée par certains antivirus. |
+| `main` | current version: `winmm.dll` loader, launcher 1.3.x (no DLL injection) |
+| `dll-injection` | old version (launcher 1.2.0): the launcher starts the game suspended and injects the mod DLLs. Kept for reference; flagged by some antivirus. |
