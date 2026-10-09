@@ -1,17 +1,17 @@
-// pont.exe — relie les instances fantômes de deux PC (coop LAN à plus de ~9 joueurs).
+// pont.exe - bridges the ghost instances of two PCs (LAN co-op beyond ~9 players).
 //
-// Sur un PC, les instances parlent sur 127.0.0.(N+1), ports 20101 (jeu) et 20111 (découverte) ; fantome.dll
-// remplace la diffusion par un envoi à chaque instance « vivante » (verrou Local\DLFantome_slot_N). Le pont :
-//   - tient les verrous des instances de l'AUTRE PC : fantome.dll les croit vivantes et leur envoie ses annonces ;
-//   - occupe leurs adresses 127.0.0.(R+1):20101/20111 : il reçoit ce que les instances locales leur envoient et le
-//     transmet au pont de l'autre PC (UDP, port 20200), avec l'adresse source d'origine ;
-//   - à la réception, renvoie le paquet à l'instance locale depuis l'adresse de l'instance distante émettrice
-//     (127.0.0.(S+1):port, socket ouvert à la demande) : le jeu voit exactement ce qu'il verrait sur un seul PC.
-// Rien n'est modifié dans le jeu ni dans Steam.
+// On one PC, the instances talk on 127.0.0.(N+1), ports 20101 (game) and 20111 (discovery); fantome.dll
+// replaces the broadcast with a send to each "live" instance (lock Local\DLFantome_slot_N). The bridge:
+//   - holds the locks of the OTHER PC's instances: fantome.dll believes them alive and sends them its announcements;
+//   - holds their addresses 127.0.0.(R+1):20101/20111: it receives what the local instances send them and
+//     forwards it to the bridge on the other PC (UDP, port 20200), with the original source address;
+//   - on receive, sends the packet back to the local instance from the address of the remote sending instance
+//     (127.0.0.(S+1):port, socket opened on demand): the game sees exactly what it would see on a single PC.
+// Nothing is modified in the game or in Steam.
 //
 // Usage : pont.exe <ip_de_l_autre_pc> <instances_distantes> [port_du_pont]
 //   ex. PC 1 : pont.exe 192.168.1.20 7-15        PC 2 : pont.exe 192.168.1.10 0-6
-// Lancer dans la session de l'utilisateur (les verrous Local\ sont propres à la session), avant les instances.
+// Run in the user's session (the Local\ locks are per-session), before the instances.
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -33,16 +33,16 @@ namespace {
 constexpr uint16_t kGamePort = 20101;
 constexpr uint16_t kScanPort = 20111;
 constexpr uint16_t kDefaultBridgePort = 20200;
-constexpr uint32_t kMagic = 0x31504C44;  // « DLP1 »
+constexpr uint32_t kMagic = 0x31504C44;  // "DLP1"
 constexpr int kMaxInstances = 33;  // adresses 0..32 (127.0.0.1..33)
-constexpr uint8_t kHello = 0xFF;  // paquet de maintien (src = dst = 0xFF, sans charge)
+constexpr uint8_t kHello = 0xFF;  // keep-alive packet (src = dst = 0xFF, no payload)
 
 #pragma pack(push, 1)
 struct Header {
     uint32_t magic;
-    uint8_t src;       // instance émettrice (127.0.0.(src+1))
+    uint8_t src;       // sending instance (127.0.0.(src+1))
     uint8_t dst;       // instance destinataire
-    uint16_t srcPort;  // ports en ordre hôte
+    uint16_t srcPort;  // ports in host order
     uint16_t dstPort;
 };
 #pragma pack(pop)
@@ -71,7 +71,7 @@ SOCKET OpenUdp(uint32_t netAddr, uint16_t hostPort)
         closesocket(s);
         return INVALID_SOCKET;
     }
-    BOOL off = FALSE;  // pas d'erreur WSAECONNRESET après un ICMP « port inaccessible »
+    BOOL off = FALSE;  // no WSAECONNRESET error after an ICMP "port unreachable"
     DWORD ret = 0;
     WSAIoctl(s, SIO_UDP_CONNRESET, &off, sizeof(off), nullptr, 0, &ret, nullptr, nullptr);
     u_long nonBlocking = 1;
@@ -81,7 +81,7 @@ SOCKET OpenUdp(uint32_t netAddr, uint16_t hostPort)
     return s;
 }
 
-struct Endpoint {  // adresse d'une instance distante occupée par le pont
+struct Endpoint {  // address of a remote instance held by the bridge
     int instance;
     uint16_t port;
 };
@@ -114,7 +114,7 @@ int main(int argc, char** argv)
     if (sscanf(argv[2], "%d-%d", &first, &last) < 2)
         last = first;
     if (first < 0 || last >= kMaxInstances || first > last) {
-        fprintf(stderr, "instances invalides : %s (0 à %d)\n", argv[2], kMaxInstances - 1);
+        fprintf(stderr, "invalid instances: %s (0 to %d)\n", argv[2], kMaxInstances - 1);
         return 2;
     }
     const uint16_t bridgePort = argc >= 4 ? static_cast<uint16_t>(atoi(argv[3])) : kDefaultBridgePort;
@@ -128,7 +128,7 @@ int main(int argc, char** argv)
 
     // Verrous et adresses des instances distantes.
     std::vector<HANDLE> slots;
-    std::map<SOCKET, Endpoint> local;            // socket -> instance distante qu'il représente
+    std::map<SOCKET, Endpoint> local;            // socket -> the remote instance it represents
     std::map<uint32_t, SOCKET> byEndpoint;       // (instance << 16 | port) -> socket
     auto key = [](int instance, uint16_t port) { return (static_cast<uint32_t>(instance) << 16) | port; };
     for (int r = first; r <= last; ++r) {
@@ -136,12 +136,12 @@ int main(int argc, char** argv)
         swprintf(name, 64, L"Local\\DLFantome_slot_%d", r);
         HANDLE h = CreateMutexW(nullptr, FALSE, name);
         if (GetLastError() == ERROR_ALREADY_EXISTS)
-            fprintf(stderr, "attention : l'instance %d semble tourner sur CE PC (verrou déjà pris)\n", r);
+            fprintf(stderr, "warning: instance %d seems to run on THIS PC (lock already taken)\n", r);
         slots.push_back(h);
         for (uint16_t port : {kGamePort, kScanPort}) {
             SOCKET s = OpenUdp(LoopbackAddr(r), port);
             if (s == INVALID_SOCKET) {
-                fprintf(stderr, "127.0.0.%d:%u déjà occupé (%d) — l'instance %d tourne-t-elle ici ?\n", r + 1, port,
+                fprintf(stderr, "127.0.0.%d:%u already in use (%d) - is instance %d running here?\n", r + 1, port,
                         WSAGetLastError(), r);
                 return 1;
             }
@@ -149,7 +149,7 @@ int main(int argc, char** argv)
             byEndpoint[key(r, port)] = s;
         }
     }
-    printf("pont : instances distantes %d-%d, autre PC %s:%u ; %zu adresses occupées\n", first, last, argv[1],
+    printf("bridge: remote instances %d-%d, other PC %s:%u ; %zu addresses held\n", first, last, argv[1],
            bridgePort, local.size());
     fflush(stdout);
 
@@ -158,7 +158,7 @@ int main(int argc, char** argv)
     ULONGLONG lastReport = GetTickCount64();
     ULONGLONG lastHello = 0;
     bool linked = false;
-    std::map<int, uint64_t> seenFrom;  // instance distante -> paquets reçus (pour le journal)
+    std::map<int, uint64_t> seenFrom;  // remote instance -> packets received (for the log)
 
     for (;;) {
         fd_set readable;
@@ -172,7 +172,7 @@ int main(int argc, char** argv)
             Sleep(100);
             continue;
         }
-        // Paquets des instances locales vers une instance distante -> tunnel.
+        // Packets from the local instances to a remote instance -> tunnel.
         for (auto& [s, ep] : local) {
             if (!FD_ISSET(s, &readable))
                 continue;
@@ -185,7 +185,7 @@ int main(int argc, char** argv)
                     break;
                 const int src = InstanceOf(from.sin_addr.s_addr);
                 if (src < 0)
-                    continue;  // ni une instance ni du bouclage : ignoré
+                    continue;  // neither an instance nor loopback: ignored
                 Header h{kMagic, static_cast<uint8_t>(src), static_cast<uint8_t>(ep.instance),
                          ntohs(from.sin_port), ep.port};
                 std::memcpy(buf.data(), &h, sizeof(h));
@@ -195,7 +195,7 @@ int main(int argc, char** argv)
                 sentBytes += n;
             }
         }
-        // Paquets de l'autre PC -> instance locale, depuis l'adresse de l'émetteur distant.
+        // Packets from the other PC -> local instance, from the remote sender's address.
         if (FD_ISSET(tunnel, &readable)) {
             for (;;) {
                 sockaddr_in from{};
@@ -213,25 +213,25 @@ int main(int argc, char** argv)
                         linked = true;
                         char t[16];
                         Stamp(t, sizeof(t));
-                        printf("%s pont : liaison établie avec %s\n", t, argv[1]);
+                        printf("%s bridge: link established with %s\n", t, argv[1]);
                     }
                     continue;
                 }
                 if (h.magic != kMagic || h.src >= kMaxInstances || h.dst >= kMaxInstances)
                     continue;
                 if (h.src < first || h.src > last)
-                    continue;  // l'émetteur doit être une instance de l'autre PC
+                    continue;  // the sender must be an instance of the other PC
                 SOCKET out;
                 auto it = byEndpoint.find(key(h.src, h.srcPort));
                 if (it != byEndpoint.end()) {
                     out = it->second;
-                } else {  // port source inhabituel : adresse ouverte à la demande
+                } else {  // unusual source port: address opened on demand
                     out = OpenUdp(LoopbackAddr(h.src), h.srcPort);
                     if (out == INVALID_SOCKET)
                         continue;
                     local[out] = {h.src, h.srcPort};
                     byEndpoint[key(h.src, h.srcPort)] = out;
-                    printf("pont : adresse 127.0.0.%d:%u ouverte à la demande\n", h.src + 1, h.srcPort);
+                    printf("bridge: address 127.0.0.%d:%u opened on demand\n", h.src + 1, h.srcPort);
                 }
                 sockaddr_in to{};
                 to.sin_family = AF_INET;
@@ -251,8 +251,8 @@ int main(int argc, char** argv)
         }
         const ULONGLONG now = GetTickCount64();
         if (now - lastHello >= 2000) {
-            // Maintien : les deux ponts émettent depuis et vers le même port, le pare-feu de Windows laisse donc
-            // passer les paquets de l'autre PC comme des réponses (pas de règle entrante à créer).
+            // Keep-alive: both bridges send from and to the same port, so the Windows firewall lets
+            // the other PC's packets through as replies (no inbound rule to create).
             lastHello = now;
             Header hello{kMagic, kHello, kHello, 0, 0};
             sendto(tunnel, reinterpret_cast<char*>(&hello), sizeof(hello), 0, reinterpret_cast<sockaddr*>(&peer),
@@ -262,7 +262,7 @@ int main(int argc, char** argv)
             lastReport = now;
             char t[16];
             Stamp(t, sizeof(t));
-            printf("%s pont : envoyés %llu paquets (%llu o), reçus %llu paquets (%llu o)\n", t, sentCount, sentBytes,
+            printf("%s bridge: sent %llu packets (%llu B), received %llu packets (%llu B)\n", t, sentCount, sentBytes,
                    recvCount, recvBytes);
             fflush(stdout);
         }
