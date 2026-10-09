@@ -74,8 +74,8 @@ before `main`, the game lock renamed, binds 127.0.0.1:20101 and 127.0.0.2:20101 
 broadcast received, reply seen as `127.0.0.1:0` then, after a send to the real port, as `127.0.0.1:20101`. Expected
 output in `out\tests\fantome\fantome1.txt`:
 ```
-reponse "reponse" de 127.0.0.1:0
-reponse "reponse" de 127.0.0.1:20101
+reply "reply" from 127.0.0.1:0
+reply "reply" from 127.0.0.1:20101
 ```
 
 ---
