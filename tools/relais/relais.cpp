@@ -1,30 +1,30 @@
 // relais — serveur relais Internet du lanceur DLCoop : coop Dying Light 1.55 sans VPN ni mode en ligne Steam.
 //
-// Même principe que tools/fantome/src/pont.cpp, en étoile : chaque joueur (le lanceur DLCoop, « agent ») se connecte
-// au relais en UDP, depuis chez lui (connexion sortante : aucun port à ouvrir sur les box). Le relais attribue à
-// chaque instance du jeu une ADRESSE 0..32 (le jeu parle sur 127.0.0.(adresse+1)) et transmet chaque paquet du jeu à
-// l'agent qui détient l'adresse destinataire. Le jeu n'est jamais exposé à Internet : seul ce port l'est.
+// Same principle as tools/fantome/src/pont.cpp, in a star: each player (the DLCoop launcher, the "agent") connects
+// to the relay over UDP, from home (outbound connection: no port to open on routers). The relay assigns
+// each game instance an ADDRESS 0..32 (the game talks on 127.0.0.(address+1)) and forwards each game packet to
+// the agent that holds the destination address. The game is never exposed to the Internet: only this port is.
 //
-// Sessions : chaque mot de passe est une session de 33 adresses (32 joueurs + 1 zombie), isolée des autres. Liste des mots de passe
-// acceptés : --mots-de-passe a,b ou RELAIS_MOTS_DE_PASSE (vide = tout mot de passe ouvre sa propre session).
+// Sessions: each password is a session of 33 addresses (32 players + 1 zombie), isolated from the others. The list of accepted
+// passwords: --mots-de-passe a,b or RELAIS_MOTS_DE_PASSE (empty = any password opens its own session).
 //
-// Protocole (en-tête de 20 octets, petit-boutiste, cf. tools/relais/README.md et tools/dlcoop/Relay.cs) :
+// Protocol (20-byte header, little-endian, see tools/relais/README.md and tools/dlcoop/Relay.cs):
 //   JOIN      agent -> relais   token = nonce de l'agent, aux = version (1 ou 2), charge = mot de passe
 //   WELCOME   relais -> agent   token = jeton de session de l'agent
 //   REFUSED   relais -> agent   aux = raison (1 mot de passe, 2 relais plein, 3 version), token = nonce
-//   CLAIM     agent -> relais   src = adresse souhaitée (0xFF : la première libre), aux = numéro de requête
-//   SLOT      relais -> agent   src = adresse attribuée (0xFF : session pleine), aux = numéro de requête
-//   RELEASE   agent -> relais   src = adresse libérée (instance du jeu fermée)
+//   CLAIM     agent -> relay    src = desired address (0xFF: the first free one), aux = request number
+//   SLOT      relay -> agent    src = assigned address (0xFF: session full), aux = request number
+//   RELEASE   agent -> relay    src = released address (game instance closed)
 //   KEEPALIVE agent -> relais   toutes les 2 s (maintient aussi le passage dans la box de l'agent) ; v2 : charge
-//                                vide de 16 octets (réponse ROSTER v2 de même taille)
+//                                empty 16 bytes (v2 ROSTER reply of the same size)
 //   ROSTER    relais -> agent   srcPort = adresses actives de la session, dstPort = celles de l'agent (masques
-//                                de 16 bits) ; v2 : charge de 16 octets = les mêmes masques sur 64 bits
+//                                16-bit); v2: 16-byte payload = the same masks as 64 bits
 //   DATA      dans les deux sens : src, dst, srcPort, dstPort + paquet du jeu
-//   BYE       agent -> relais   départ (toutes ses adresses sont libérées)
-// Versions : v1 (lanceur DLCoop 1.1) = adresses 0..15 ; v2 (1.2+) = 0..32. Un agent v1 ne reçoit que des adresses
-// et des paquets 0..15 : les anciens paquets jouent entre eux comme avant, même dans une session mixte.
-// Un agent silencieux pendant 15 s est retiré. Le relais ne répond jamais par un paquet plus gros que la requête
-// (pas d'amplification) et ne répond à rien sans jeton valide, sauf à JOIN.
+//   BYE       agent -> relay    leaving (all its addresses are released)
+// Versions: v1 (DLCoop launcher 1.1) = addresses 0..15; v2 (1.2+) = 0..32. A v1 agent only receives addresses
+// and packets 0..15: the old launchers play among themselves as before, even in a mixed session.
+// An agent silent for 15 s is removed. The relay never replies with a packet larger than the request
+// (no amplification) and replies to nothing without a valid token, except JOIN.
 //
 // Compilation : Linux  g++ -O2 -std=c++17 -static -o relais relais.cpp   (Dockerfile fourni)
 //               Windows cl /O2 /std:c++17 /EHsc relais.cpp ws2_32.lib    (essais en local)
@@ -60,9 +60,9 @@ constexpr SOCKET INVALID_SOCKET = -1;
 
 namespace {
 
-constexpr uint32_t kMagic = 0x31524C44;  // « DLR1 »
+constexpr uint32_t kMagic = 0x31524C44;  // "DLR1"
 constexpr uint8_t kVersionMax = 2;
-constexpr int kSlots = 33;               // v2 : adresses 127.0.0.1..33 côté joueurs (32 joueurs + 1 zombie)
+constexpr int kSlots = 33;               // v2: addresses 127.0.0.1..33 on the player side (32 players + 1 zombie)
 constexpr int kSlotsV1 = 16;             // v1 : 127.0.0.1..16
 constexpr size_t kRosterV2 = 16;         // charge de ROSTER v2 : deux masques de 64 bits
 constexpr uint8_t kNoSlot = 0xFF;
@@ -90,7 +90,7 @@ struct Header {
     uint64_t token;
 };
 #pragma pack(pop)
-static_assert(sizeof(Header) == 20, "en-tête du protocole");
+static_assert(sizeof(Header) == 20, "protocol header");
 
 using Clock = std::chrono::steady_clock;
 
@@ -100,9 +100,9 @@ struct Client {
     uint64_t nonce = 0;
     int room = -1;
     uint8_t version = 1;
-    uint64_t slots = 0;  // masque des adresses détenues
+    uint64_t slots = 0;  // mask of held addresses
     Clock::time_point lastSeen;
-    // limites de débit (fenêtre d'une seconde)
+    // rate limits (one-second window)
     int64_t windowStart = 0;
     int packets = 0;
     int bytes = 0;
@@ -111,8 +111,8 @@ struct Client {
 
 struct Room {
     std::string password;
-    uint64_t owner[kSlots] = {};  // jeton de l'agent qui détient chaque adresse (0 = libre)
-    int number = 0;               // pour le journal (le mot de passe n'y apparaît jamais)
+    uint64_t owner[kSlots] = {};  // token of the agent that holds each address (0 = free)
+    int number = 0;               // for the log (the password never appears in it)
 };
 
 SOCKET g_sock = INVALID_SOCKET;
@@ -174,7 +174,7 @@ uint64_t ActiveMask(const Room& r)
 
 int SlotsOf(const Client& c) { return c.version >= 2 ? kSlots : kSlotsV1; }
 
-// `full` : agent v2 et requête assez grande (pas d'amplification) -> masques de 64 bits en charge.
+// `full`: v2 agent and a large enough request (no amplification) -> 64-bit masks in the payload.
 void SendRoster(const Client& c, bool full = true)
 {
     if (c.room < 0)
@@ -192,8 +192,8 @@ void SendRoster(const Client& c, bool full = true)
     Send(c.addr, b, sizeof(b));
 }
 
-// Les adresses actives ont changé : tous les agents de la session en sont avertis tout de suite (sinon au plus
-// tard à leur prochain KEEPALIVE).
+// The active addresses have changed: every agent in the session is told right away (otherwise at the latest
+// at their next KEEPALIVE).
 void PushRoster(int room)
 {
     for (auto& [token, c] : g_clients)
@@ -212,7 +212,7 @@ void RemoveClient(uint64_t token, const char* why)
         for (int i = 0; i < kSlots; ++i)
             if (g_rooms[room].owner[i] == token)
                 g_rooms[room].owner[i] = 0;
-    Log("agent %s retiré (%s), session %d", AddrText(c.addr).c_str(), why, room >= 0 ? g_rooms[room].number : 0);
+    Log("agent %s removed (%s), session %d", AddrText(c.addr).c_str(), why, room >= 0 ? g_rooms[room].number : 0);
     g_clients.erase(it);
     if (room >= 0)
         PushRoster(room);
@@ -230,7 +230,7 @@ int FindOrCreateRoom(const std::string& password)
         if (!ok)
             return -1;
     }
-    // Session vide réutilisable ?
+    // A reusable empty session?
     for (size_t i = 0; i < g_rooms.size(); ++i) {
         bool used = false;
         for (auto& [t, c] : g_clients)
@@ -269,7 +269,7 @@ void HandleJoin(const sockaddr_in& from, const Header& h, const char* payload, s
         SendHeader(from, kRefused, 0, kBadVersion, h.token);
         return;
     }
-    // Répétition d'un JOIN déjà accepté (réponse perdue) : même jeton.
+    // Repeat of an already-accepted JOIN (lost reply): same token.
     for (auto& [token, c] : g_clients)
         if (c.nonce == h.token && SameEndpoint(c.addr, from)) {
             c.lastSeen = Clock::now();
@@ -303,7 +303,7 @@ void HandleJoin(const sockaddr_in& from, const Header& h, const char* payload, s
     c.version = h.aux;
     c.lastSeen = Clock::now();
     g_clients[token] = c;
-    Log("agent %s (v%u) entré dans la session %d (%zu agents)", AddrText(from).c_str(), c.version,
+    Log("agent %s (v%u) joined session %d (%zu agents)", AddrText(from).c_str(), c.version,
         g_rooms[room].number, g_clients.size());
     SendHeader(from, kWelcome, 0, c.version, token);
     SendRoster(g_clients[token]);
@@ -314,7 +314,7 @@ bool RateOk(Client& c, size_t n)
     const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(Clock::now().time_since_epoch()).count();
     if (now != c.windowStart) {
         if (c.dropped)
-            Log("agent %s : %llu paquets jetés (débit trop élevé)", AddrText(c.addr).c_str(),
+            Log("agent %s: %llu packets dropped (rate too high)", AddrText(c.addr).c_str(),
                 static_cast<unsigned long long>(c.dropped));
         c.windowStart = now;
         c.packets = 0;
@@ -347,7 +347,7 @@ void HandlePacket(const sockaddr_in& from, char* buf, size_t n)
     if (!RateOk(c, n))
         return;
     c.lastSeen = Clock::now();
-    if (!SameEndpoint(c.addr, from)) {  // la box de l'agent a changé de port : on suit
+    if (!SameEndpoint(c.addr, from)) {  // the agent's router changed port: we follow
         Log("agent %s : nouvelle adresse %s", AddrText(c.addr).c_str(), AddrText(from).c_str());
         c.addr = from;
     }
@@ -356,7 +356,7 @@ void HandlePacket(const sockaddr_in& from, char* buf, size_t n)
     switch (h.type) {
     case kData: {
         if (h.src >= kSlots || h.dst >= kSlots || room.owner[h.src] != c.token)
-            return;  // l'émetteur doit détenir l'adresse source
+            return;  // the sender must hold the source address
         const uint64_t dest = room.owner[h.dst];
         if (!dest || dest == c.token)
             return;
@@ -377,7 +377,7 @@ void HandlePacket(const sockaddr_in& from, char* buf, size_t n)
         int slot = -1;
         const int limit = SlotsOf(c);
         if (h.src < limit && (room.owner[h.src] == 0 || room.owner[h.src] == c.token))
-            slot = h.src;  // adresse souhaitée (reconnexion : l'instance du jeu garde son adresse)
+            slot = h.src;  // desired address (reconnect: the game instance keeps its address)
         for (int i = 0; slot < 0 && i < limit; ++i)
             if (room.owner[i] == 0)
                 slot = i;
@@ -390,7 +390,7 @@ void HandlePacket(const sockaddr_in& from, char* buf, size_t n)
         c.slots |= 1ull << slot;
         SendHeader(from, kSlot, static_cast<uint8_t>(slot), h.aux, c.token);
         if (fresh) {
-            Log("session %d : adresse %d attribuée à %s", room.number, slot, AddrText(c.addr).c_str());
+            Log("session %d: address %d assigned to %s", room.number, slot, AddrText(c.addr).c_str());
             PushRoster(c.room);
         }
         return;
@@ -399,12 +399,12 @@ void HandlePacket(const sockaddr_in& from, char* buf, size_t n)
         if (h.src < kSlots && room.owner[h.src] == c.token) {
             room.owner[h.src] = 0;
             c.slots &= ~(1ull << h.src);
-            Log("session %d : adresse %d libérée", room.number, h.src);
+            Log("session %d: address %d released", room.number, h.src);
             PushRoster(c.room);
         }
         return;
     case kBye:
-        RemoveClient(c.token, "départ");
+        RemoveClient(c.token, "leaving");
         return;
     default:
         return;
@@ -467,13 +467,13 @@ int main(int argc, char** argv)
     setsockopt(g_sock, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char*>(&size), sizeof(size));
     setsockopt(g_sock, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<char*>(&size), sizeof(size));
 #ifdef _WIN32
-    BOOL off = FALSE;  // pas de WSAECONNRESET après un ICMP « port inaccessible »
+    BOOL off = FALSE;  // no WSAECONNRESET after an ICMP "port unreachable"
     DWORD ret = 0;
     WSAIoctl(g_sock, _WSAIOW(IOC_VENDOR, 12), &off, sizeof(off), nullptr, 0, &ret, nullptr, nullptr);
 #endif
     Log("relais DLCoop : UDP %u, %s", port,
         g_allowed.empty() ? "tout mot de passe ouvre une session"
-                          : (std::to_string(g_allowed.size()) + " mot(s) de passe accepté(s)").c_str());
+                          : (std::to_string(g_allowed.size()) + " password(s) accepted").c_str());
 
     std::vector<char> buf(65536);
     auto lastSweep = Clock::now();
@@ -519,13 +519,13 @@ int main(int argc, char** argv)
         if (now - lastReport >= std::chrono::seconds(60)) {
             lastReport = now;
             if (g_forwarded != reportedPackets)
-                Log("%zu agents ; %llu paquets relayés (%llu Mo)", g_clients.size(),
+                Log("%zu agents; %llu packets relayed (%llu MB)", g_clients.size(),
                     static_cast<unsigned long long>(g_forwarded),
                     static_cast<unsigned long long>(g_forwardedBytes >> 20));
             reportedPackets = g_forwarded;
         }
     }
-    Log("arrêt du relais");
+    Log("relay stopped");
     closesocket(g_sock);
     return 0;
 }
