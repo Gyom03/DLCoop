@@ -1,4 +1,4 @@
-# Ghost players: several Dying Light instances in LAN co-op on a single PC
+﻿# Ghost players: several Dying Light instances in LAN co-op on a single PC
 
 Goal: test co-op (and the "6 players" mod) **without gathering other players**: run several instances of the game on
 the same PC, each with its own identity and its own network address, and have them join in LAN.
@@ -43,7 +43,7 @@ The game is always launched with `-nologos` (skips the intro videos); ghosts als
 
 Then arrange the windows: `.\mosaique.ps1` (2 × 2 for 4 instances, `-Colonnes 3` for 5-6). The windows are arranged
 **by instance number** (0 = host top-left; pid read from `journaux\instance_N.log`) and their title becomes
-"Dying Light - instance 0 (hôte)" / "Dying Light - fantôme N". See §5.6: the game resists resizing, so set a suitable
+"Dying Light - instance 0 (host)" / "Dying Light - ghost N". See §5.6: the game resists resizing, so set a suitable
 resolution in its video options (windowed).
 
 Two PCs (beyond ~9 instances per PC): on each PC, `pont.exe` holds the `Local\DLFantome_slot_N` locks of the other PC's

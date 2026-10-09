@@ -1,7 +1,7 @@
-﻿# Appuie sur Espace dans les fenêtres de Dying Light (passe l'écran « appuyez sur une touche »).
-# Usage : .\espace.ps1                 toutes les fenêtres du jeu
-#         .\espace.ps1 -Processus 1234,5678  seulement ces processus
-# La fenêtre est mise au premier plan puis la touche est envoyée par SendInput (le jeu lit le clavier brut).
+﻿# Presses Space in the Dying Light windows (gets past the "press any key" screen).
+# Usage: .\espace.ps1                 all game windows
+#        .\espace.ps1 -Processus 1234,5678  only these processes
+# The window is brought to the front, then the key is sent via SendInput (the game reads the raw keyboard).
 param([int[]] $Processus = @())
 $ErrorActionPreference = "Stop"
 Add-Type @"
@@ -15,7 +15,7 @@ public static class Clavier {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
     public static void Espace() {
-        // touche Espace : code virtuel 0x20, code de balayage 0x39 ; appui puis relâchement
+        // Space key: virtual code 0x20, scan code 0x39; press then release
         INPUT[] t = new INPUT[2];
         t[0].type = 1; t[0].ki.wVk = 0x20; t[0].ki.wScan = 0x39;
         t[1].type = 1; t[1].ki.wVk = 0x20; t[1].ki.wScan = 0x39; t[1].ki.dwFlags = 2;
@@ -28,12 +28,12 @@ public static class Clavier {
 $jeux = Get-Process DyingLightGame -ErrorAction SilentlyContinue |
     Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and ($Processus.Count -eq 0 -or $Processus -contains $_.Id) }
 foreach ($p in $jeux) {
-    # Alt brièvement enfoncé : permet à SetForegroundWindow de réussir depuis un processus en arrière-plan
+    # Alt pressed briefly: lets SetForegroundWindow succeed from a background process
     [Clavier]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [Clavier]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
     [Clavier]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
     [Clavier]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
     Start-Sleep -Milliseconds 300
     [Clavier]::Espace()
     Start-Sleep -Milliseconds 300
-    "Espace envoyé : pid $($p.Id) ($($p.MainWindowTitle))"
+    "Space sent: pid $($p.Id) ($($p.MainWindowTitle))"
 }

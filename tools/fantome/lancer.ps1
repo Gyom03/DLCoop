@@ -1,6 +1,6 @@
-﻿# Lance l'hôte + N fantômes, espacés de -Ecart secondes, appuie sur Espace dans chaque fenêtre 20 s après son
-# lancement (écran « appuyez sur une touche »), puis range les fenêtres en mosaïque.
-# Usage (depuis out\tools\fantome) : .\lancer.ps1 [-Fantomes 5] [-Ecart 10] [-SansHote] [-SansEspace]
+﻿# Launches the host + N ghosts, -Ecart seconds apart, presses Space in each window 20 s after it launches
+# ("press any key" screen), then tiles the windows.
+# Usage (from out\tools\fantome): .\lancer.ps1 [-Fantomes 5] [-Ecart 10] [-SansHote] [-SansEspace]
 param([int] $Fantomes = 5, [int] $Ecart = 10, [switch] $SansHote, [switch] $SansEspace)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
@@ -16,7 +16,7 @@ function PidInstance([string] $num) {
     return 0
 }
 
-$attente = @()   # instances lancées, en attente de leur Espace : @{ Pid; Quand }
+$attente = @()   # launched instances, waiting for their Space: @{ Pid; Quand }
 function EspacesDus {
     foreach ($a in @($script:attente)) {
         if ((Get-Date) -ge $a.Quand) {
@@ -29,7 +29,7 @@ function EspacesDus {
 foreach ($num in $liste) {
     & .\fantome.exe $num | Out-Null
     $p = PidInstance $num
-    "lancé : $num (pid $p)"
+    "launched: $num (pid $p)"
     if ($p -and -not $SansEspace) { $attente += @{ Pid = $p; Quand = (Get-Date).AddSeconds(20) } }
     $fin = (Get-Date).AddSeconds($Ecart)
     while ((Get-Date) -lt $fin) { EspacesDus; Start-Sleep -Milliseconds 500 }
