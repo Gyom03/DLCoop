@@ -13,7 +13,7 @@ namespace DLCoop
     {
         readonly Settings s;
         readonly DispatcherTimer relayTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        bool minimizedAfterLaunch;  // relais : fenêtre réduite au lieu d'être fermée (l'agent doit rester actif)
+        bool minimizedAfterLaunch;  // relay: window minimized instead of closed (the agent must stay alive)
 
         public MainWindow(Settings settings, string gameMessage = "")
         {
@@ -59,7 +59,7 @@ namespace DLCoop
             s.Instance = InstanceNumber.SelectedIndex;  // 0 = auto
             s.MultiInstance = MultiInstance.IsChecked == true;
             s.Server = ServerAddress.Text.Trim();
-            s.Internet = s.Server.Length > 0;  // serveur renseigné : relais ; vide : réseau local / VPN
+            s.Internet = s.Server.Length > 0;  // server filled in: relay; empty: local network / VPN
             s.Password = SessionPassword.Text;
             s.DisableEos = DisableEos.IsChecked == true;
             if (MaxPlayers.SelectedItem is string max)
@@ -141,7 +141,7 @@ namespace DLCoop
         void UpdateState(object sender, RoutedEventArgs e)
         {
             if (DisplayName == null || InstanceNumber == null || ServerAddress == null)
-                return;  // pendant InitializeComponent
+                return;  // during InitializeComponent
             bool hide = HideName.IsChecked == true;
             DisplayName.IsEnabled = RandomButton.IsEnabled = hide;
             if (hide && string.IsNullOrWhiteSpace(DisplayName.Text))
@@ -150,8 +150,8 @@ namespace DLCoop
             bool internet = ServerAddress.Text.Trim().Length > 0;
             InstanceNumber.IsEnabled = extra;
             if (extra && !internet)
-                MultiInstance.IsChecked = true;  // une 2e instance sur ce PC exige les adresses locales
-            MultiInstance.IsEnabled = !internet;  // relais : adresses locales toujours utilisées
+                MultiInstance.IsChecked = true;  // a 2nd instance on this PC requires the local addresses
+            MultiInstance.IsEnabled = !internet;  // relay: local addresses always used
             ServerAddress.IsEnabled = SessionPassword.IsEnabled = internet;
             UpdateRelay();
         }
@@ -165,7 +165,7 @@ namespace DLCoop
             {
                 RelayState.Text = relay.Describe();
                 RelayState.Foreground = (Brush)FindResource(relay.Connected ? "Ok" : "Accent");
-                // Relais : la fenêtre réduite après le lancement se ferme d'elle-même quand le dernier jeu est fermé.
+                // Relay: the window minimized after launch closes itself when the last game is closed.
                 if (minimizedAfterLaunch && relay.GamesRunning == 0)
                 {
                     minimizedAfterLaunch = false;
@@ -176,7 +176,7 @@ namespace DLCoop
             {
                 RelayState.Text = "";
             }
-            // Ligne vide (pas de relais) : masquée, sinon elle laisse un blanc en bas de la section.
+            // Empty line (no relay): hidden, otherwise it leaves a blank at the bottom of the section.
             RelayState.Visibility = RelayState.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -196,7 +196,7 @@ namespace DLCoop
             {
                 GamePath.Text = dlg.FileName;
                 s.Game = dlg.FileName;
-                s.Save();  // chemin choisi à la main : mémorisé tout de suite
+                s.Save();  // manually chosen path: saved right away
                 UpdateGame();
             }
         }
@@ -209,7 +209,7 @@ namespace DLCoop
             SetStatus("Launching…", "Pale");
             try
             {
-                bool forwarded = false;  // jeu lancé par l'autre DLCoop de ce PC (agent du relais)
+                bool forwarded = false;  // game launched by the other DLCoop on this PC (the relay agent)
                 int pid;
                 if (s.Internet)
                 {
@@ -237,7 +237,7 @@ namespace DLCoop
                         await Task.Delay(1200);
                         if (s.Internet && !forwarded)
                         {
-                            // L'agent du relais doit rester actif pendant la partie.
+                            // The relay agent must stay alive during the game.
                             minimizedAfterLaunch = true;
                             WindowState = WindowState.Minimized;
                         }

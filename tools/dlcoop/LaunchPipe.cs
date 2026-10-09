@@ -1,9 +1,9 @@
-// Lancement transmis à l'agent du relais déjà ouvert sur ce PC.
-// Un seul DLCoop par PC peut être l'agent du relais (il tient les adresses 127.0.0.N des joueurs distants, verrou
-// Local\DLCoop_relais). Mais l'utilisateur peut rouvrir DLCoop (raccourci) pendant une partie, ou l'agent peut tourner
-// sans fenêtre (DLCoop.exe /launch) : le 2e DLCoop envoie alors ses réglages par un tube nommé local, et l'agent lance
-// lui-même le jeu (adresse demandée au relais, jeu suivi). Réponse : « OK <pid> <instance> » ou « ERR <message> ».
-// Tube local à la session de l'utilisateur ; ACL par défaut (écriture : l'utilisateur et les administrateurs).
+// A launch forwarded to the relay agent already open on this PC.
+// Only one DLCoop per PC can be the relay agent (it holds the remote players' 127.0.0.N addresses, lock
+// Local\DLCoop_relais). But the user may reopen DLCoop (shortcut) during a game, or the agent may run headless
+// (DLCoop.exe /launch): the second DLCoop then sends its settings over a local named pipe, and the agent launches the
+// game itself (address requested from the relay, game tracked). Reply: "OK <pid> <instance>" or "ERR <message>".
+// A pipe local to the user's session; default ACL (write: the user and administrators).
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -19,13 +19,13 @@ namespace DLCoop
         static Thread server;
         static volatile bool stopping;
 
-        /// <summary>Agent du relais : accepte les lancements des autres DLCoop de ce PC.</summary>
+        /// <summary>The relay agent: accepts launches from the other DLCoop instances on this PC.</summary>
         public static void Serve()
         {
             if (server != null)
                 return;
             stopping = false;
-            server = new Thread(Loop) { IsBackground = true, Name = "tube de lancement" };
+            server = new Thread(Loop) { IsBackground = true, Name = "launch pipe" };
             server.Start();
         }
 
@@ -36,7 +36,7 @@ namespace DLCoop
             stopping = true;
             try
             {
-                // Débloque WaitForConnection.
+                // Unblocks WaitForConnection.
                 using (var c = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut))
                     c.Connect(200);
             }
@@ -78,14 +78,14 @@ namespace DLCoop
                 }
                 catch (Exception)
                 {
-                    Thread.Sleep(200);  // client parti en cours de route : on attend le suivant
+                    Thread.Sleep(200);  // the client left mid-way: wait for the next one
                 }
             }
         }
 
         /// <summary>
-        /// Demande à l'agent du relais de ce PC de lancer le jeu avec ces réglages ; renvoie le pid du jeu.
-        /// Lève une exception au message lisible.
+        /// Asks this PC's relay agent to launch the game with these settings; returns the game's pid.
+        /// Throws with a readable message.
         /// </summary>
         public static int Request(Settings s, out int instance)
         {

@@ -1,11 +1,11 @@
-// Démarrage : fenêtre de réglages, ou lancement direct sans fenêtre (scripts) :
+// Startup: the settings window, or a direct headless launch (scripts):
 //   DLCoop.exe /launch [/instance N] [/multi] [/name Name] [/game path\DyingLightGame.exe]
 //              [/internet | /lan] [/server ip[:port]] [/password X] [/maxplayers N] [/count N]
-// Les autres options sont celles mémorisées par la fenêtre (serveur renseigné = relais Internet, sinon réseau local ;
-// /internet et /lan forcent le mode). Code de sortie : 0 = jeu(x) lancé(s) avec le mod chargé.
-// Relais Internet : le processus reste actif (sans fenêtre) tant qu'un des jeux lancés tourne. Un seul DLCoop par PC est
-// l'agent du relais : un autre DLCoop (fenêtre ou /launch) lui transmet ses lancements (LaunchPipe).
-// /count N : N instances (la première selon les réglages, les suivantes en instances supplémentaires), 10 s d'écart.
+// The other options are the ones saved by the window (a filled-in server = Internet relay, otherwise local network;
+// /internet and /lan force the mode). Exit code: 0 = game(s) launched with the mod loaded.
+// Internet relay: the process stays alive (headless) as long as one of the launched games runs. Only one DLCoop per PC
+// is the relay agent: another DLCoop (window or /launch) forwards its launches to it (LaunchPipe).
+// /count N: N instances (the first from the settings, the later ones as additional instances), 10 s apart.
 using System;
 using System.Threading;
 using System.Windows;
@@ -14,13 +14,13 @@ namespace DLCoop
 {
     public partial class App : Application
     {
-        /// <summary>Agent du relais Internet de ce processus (null : pas de relais).</summary>
+        /// <summary>This process's Internet relay agent (null: no relay).</summary>
         public static Relay Relay { get; private set; }
 
         static readonly object relayGate = new object();
 
-        /// <summary>Agent connecté au relais des réglages ; un agent déjà ouvert vers un autre relais est remplacé
-        /// s'il n'a plus de jeu en cours.</summary>
+        /// <summary>Agent connected to the settings' relay; an agent already open to another relay is replaced
+        /// if it has no running game left.</summary>
         public static Relay ConnectRelay(Settings s)
         {
             lock (relayGate)
@@ -38,7 +38,7 @@ namespace DLCoop
                 if (r == null)
                 {
                     Relay = r = Relay.Connect(s.Server, s.Password);
-                    LaunchPipe.Serve();  // les autres DLCoop de ce PC passeront par cet agent
+                    LaunchPipe.Serve();  // the other DLCoop instances on this PC will go through this agent
                 }
                 return r;
             }
@@ -57,16 +57,16 @@ namespace DLCoop
         static readonly object launchGate = new object();
 
         /// <summary>
-        /// Lancement par le relais dans CE processus (agent) : adresse demandée au relais, jeu lancé et suivi.
-        /// Sérialisé : Launcher.Launch pose des variables d'environnement du processus (fenêtre et tube de
-        /// lancement peuvent lancer en même temps). Lève RelayBusyException si un autre DLCoop est l'agent.
+        /// Relay launch in THIS process (the agent): an address is requested from the relay, the game launched and
+        /// tracked. Serialized: Launcher.Launch sets process environment variables (the window and the launch pipe can
+        /// launch at the same time). Throws RelayBusyException if another DLCoop is the agent.
         /// </summary>
         public static int LaunchInRelay(Settings s, out int instance)
         {
             lock (launchGate)
             {
                 var relay = ConnectRelay(s);
-                Launcher.PickInstance(s);  // vérification avant de réserver une adresse
+                Launcher.PickInstance(s);  // check before reserving an address
                 int slot = relay.Claim();
                 int pid;
                 try
@@ -75,7 +75,7 @@ namespace DLCoop
                 }
                 catch
                 {
-                    relay.Release(slot);  // jeu non lancé : adresse rendue
+                    relay.Release(slot);  // game not launched: address returned
                     throw;
                 }
                 relay.Track(pid, slot);
@@ -83,8 +83,8 @@ namespace DLCoop
             }
         }
 
-        /// <summary>Relais : lance ici, ou transmet à l'agent déjà ouvert sur ce PC. <paramref name="forwarded"/> :
-        /// le jeu est suivi par l'autre DLCoop (celui-ci peut se fermer).</summary>
+        /// <summary>Relay: launches here, or forwards to the agent already open on this PC. <paramref name="forwarded"/>:
+        /// the game is tracked by the other DLCoop (this one may close).</summary>
         public static int LaunchWithRelay(Settings s, out int instance, out bool forwarded)
         {
             try
@@ -105,7 +105,7 @@ namespace DLCoop
             bool direct = false;
             int count = 1;
             var s = Settings.Load();
-            string gameMessage = Launcher.CheckInstallation(s);  // à chaque démarrage : chemin toujours valable ?
+            string gameMessage = Launcher.CheckInstallation(s);  // on each start: is the path still valid?
             for (int i = 0; i < args.Length; ++i)
             {
                 string a = args[i].TrimStart('/', '-').ToLowerInvariant();
@@ -152,7 +152,7 @@ namespace DLCoop
                 {
                     if (k > 0)
                     {
-                        Thread.Sleep(10000);  // 10 s entre deux instances (valeur validée avec tools/fantome)
+                        Thread.Sleep(10000);  // 10 s between two instances (value validated with tools/fantome)
                         s.ExtraInstance = true;
                         s.Instance = 0;
                         s.MultiInstance = true;
@@ -163,7 +163,7 @@ namespace DLCoop
                         throw new InvalidOperationException("The mod was not detected in the game (see the logs folder).");
                 }
                 code = 0;
-                Relay?.WaitForGames();  // relais : l'agent reste actif jusqu'à la fermeture des jeux
+                Relay?.WaitForGames();  // relay: the agent stays alive until the games are closed
             }
             catch (Exception ex)
             {
