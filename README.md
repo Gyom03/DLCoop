@@ -11,8 +11,7 @@
 - **Just one launcher** — install, set options, play.
 - **Free.**
 
-Personal mod, **not affiliated with Techland**. No game file is shipped or modified on disk: the mod patches the game in
-memory after verifying the 1.55 bytes.
+Personal mod, **not affiliated with Techland**.
 
 ## Play
 
