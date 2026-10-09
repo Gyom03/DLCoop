@@ -1,5 +1,5 @@
-; Exports d'engine_x64_rwdi.dll (Dying Light 1.55) utilisés par coop6.dll -> engine_imports.lib (build.ps1).
-; Noms décorés relevés dans la table d'exports de engine_x64_rwdi.dll (1.55).
+; Exports of engine_x64_rwdi.dll (Dying Light 1.55) used by coop6.dll -> engine_imports.lib (build.ps1).
+; Decorated names taken from the export table of engine_x64_rwdi.dll (1.55).
 LIBRARY engine_x64_rwdi.dll
 EXPORTS
     ?Clone@IUIElement@@QEAAPEAV1@PEAV1@@Z

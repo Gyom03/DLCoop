@@ -1,5 +1,5 @@
-// Objets du moteur (engine_x64_rwdi.dll) utilisés par les réécritures coop : seules les méthodes exportées
-// appelées sont déclarées (appels par la table d'imports, `call [rip+X]`, comme dans le jeu).
+// Engine objects (engine_x64_rwdi.dll) used by the co-op rewrites: only the exported methods that are called
+// are declared (calls through the import table, `call [rip+X]`, like in the game).
 #pragma once
 #include "../common/game_abi.h"
 
@@ -7,15 +7,15 @@ class ILevel;
 
 class IGSObject {
 public:
-    // engine : ?GetNetOwnerID@IGSObject@@QEBAHXZ — identifiant réseau du joueur propriétaire.
+    // engine: ?GetNetOwnerID@IGSObject@@QEBAHXZ — network id of the owning player.
     __declspec(dllimport) int GetNetOwnerID() const;
-    // engine : ?GetLevel@IGSObject@@QEBAPEAVILevel@@XZ (Linux : GameObject::GetLevel).
+    // engine: ?GetLevel@IGSObject@@QEBAPEAVILevel@@XZ (Linux: GameObject::GetLevel).
     __declspec(dllimport) ILevel* GetLevel() const;
 };
 
 class ILevel {};
 
-// Vecteur du moteur (ttl::vector) : données, nombre d'éléments, capacité.
+// Engine vector (ttl::vector): data, element count, capacity.
 template <typename T>
 struct TtlVector {
     T* m_Data;
@@ -25,28 +25,28 @@ struct TtlVector {
 
 class PlayerDI;
 
-// Niveau de jeu (partiel). Positions vérifiées dans le code machine Windows.
+// Game level (partial). Offsets verified against the Windows machine code.
 class LevelDI : public ILevel {
 public:
     std::uint8_t _pad000[0xe18];
-    TtlVector<PlayerDI*> m_AllPlayers;  // +0xe18 — tous les joueurs (côté 0 ; Linux +0xe10)
+    TtlVector<PlayerDI*> m_AllPlayers;  // +0xe18 — all players (side 0; Linux +0xe10)
 
-    // Linux : LevelDI::GetAllPlayersCount(EPlayerConflictSide::TYPE) avec le côté 0 (tous) : seul cas utilisé
-    // ici, réduit par le compilateur à la lecture de la taille de la liste (`mov edx,[rax+0xe20]`).
+    // Linux: LevelDI::GetAllPlayersCount(EPlayerConflictSide::TYPE) with side 0 (all): the only case used
+    // here, reduced by the compiler to reading the list size (`mov edx,[rax+0xe20]`).
     std::uint32_t GetAllPlayersCount() const { return m_AllPlayers.m_Size; }
 };
 DL_CHECK_OFFSET(LevelDI, m_AllPlayers, 0xe18);
 
-// Objet de jeu (Linux : ObjectDI) dont la partie IGSObject est à +0x28 (RTTI MSVC : GameObject/IGSObject
-// mdisp 0x28 pour HumanAI).
+// Game object (Linux: ObjectDI) whose IGSObject part is at +0x28 (MSVC RTTI: GameObject/IGSObject
+// mdisp 0x28 for HumanAI).
 class ObjectDI {
 public:
-    virtual void _vpad_0();  // objet polymorphe : vftable à +0 (places suivantes déclarées par les dérivées)
+    virtual void _vpad_0();  // polymorphic object: vftable at +0 (later slots declared by the subclasses)
 
     std::uint8_t _pad08[0x28 - 0x8];
-    IGSObject m_GSObject;  // +0x28 (base IGSObject, objet vide : 1 octet)
+    IGSObject m_GSObject;  // +0x28 (IGSObject base, empty object: 1 byte)
 
-    // Linux : ObjectDI::GetLevelDI() = GameObject::GetLevel() sur la base +0x28.
+    // Linux: ObjectDI::GetLevelDI() = GameObject::GetLevel() on the +0x28 base.
     LevelDI* GetLevelDI() const { return static_cast<LevelDI*>(m_GSObject.GetLevel()); }
 };
 DL_CHECK_OFFSET(ObjectDI, m_GSObject, 0x28);

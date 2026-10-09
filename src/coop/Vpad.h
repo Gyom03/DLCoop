@@ -1,6 +1,5 @@
-// Places de vftable non utilisées : déclarées pour que les méthodes virtuelles utiles tombent à leur place
-// exacte. Une vraie méthode virtuelle donne `call [rax+place*8]`, comme dans le jeu (dl::vcall donne
-// `mov rdx,[rax+…] ; call rdx`).
+// Unused vftable slots: declared so that the useful virtual methods land at their exact slot. A real virtual
+// method yields `call [rax+slot*8]`, like in the game (dl::vcall yields `mov rdx,[rax+…] ; call rdx`).
 #pragma once
 
 #define DL_VPAD1(n) virtual void _vpad_##n();
