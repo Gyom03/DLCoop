@@ -1,15 +1,15 @@
-// fantome.exe — lance une instance de Dying Light 1.55 avec fantome.dll chargée avant son point d'entrée.
+// fantome.exe - launches one Dying Light 1.55 instance with fantome.dll loaded before its entry point.
 //
 // Usage :
-//   fantome.exe          lance un fantôme (premier numéro libre de 1 à 7)
-//   fantome.exe hote     lance l'hôte (numéro 0, identité Steam réelle)
-//   fantome.exe 3        lance le fantôme numéro 3
-// Réglages : fantome.ini à côté de l'exe (créé avec les valeurs par défaut s'il manque).
+//   fantome.exe          launches a ghost (first free number from 1 to 7)
+//   fantome.exe hote     launches the host (number 0, real Steam identity)
+//   fantome.exe 3        launches ghost number 3
+// Settings: fantome.ini next to the exe (created with the default values if missing).
 //
-// Méthode : le jeu est créé en pause, une APC « LoadLibraryW(fantome.dll) » est mise en file sur son fil
-// principal, puis le fil est relâché. L'APC s'exécute à la fin de l'initialisation du chargeur de Windows,
-// avant le point d'entrée du jeu. Les DLL de mods (clé Mods=) suivent, une APC chacune. L'installation Steam
-// n'est pas modifiée.
+// Method: the game is created suspended, a "LoadLibraryW(fantome.dll)" APC is queued on its main thread,
+// then the thread is resumed. The APC runs at the end of the Windows loader's initialization, before the
+// game's entry point. The mod DLLs (Mods= key) follow, one APC each. The Steam install is not
+// modified.
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -47,20 +47,20 @@ void WriteDefaultIni(const std::wstring& ini)
     if (!f)
         return;
     fwprintf(f,
-             L"; Réglages de fantome.exe\n"
+             L"; fantome.exe settings\n"
              L"[fantome]\n"
-             L"; Exécutable du jeu (lancé tel quel, jamais modifié)\n"
+             L"; Game executable (launched as-is, never modified)\n"
              L"Jeu=C:\\Program Files (x86)\\Steam\\steamapps\\common\\Dying Light\\DyingLightGame.exe\n"
-             L"; 1 = chaque instance prend l'adresse 127.0.0.(numéro+1) sur les ports du jeu (lancer aussi l'hôte\n"
-             L";     avec « fantome.exe hote »)\n"
+             L"; 1 = each instance takes the address 127.0.0.(number+1) on the game ports (also launch the host\n"
+             L";     with \"fantome.exe hote\")\n"
              L"Bouclage=1\n"
-             L"; 0 = fantômes sans son (/nosound)\n"
+             L"; 0 = ghosts without sound (/nosound)\n"
              L"SonFantomes=0\n"
-             L"; Arguments ajoutés pour toutes les instances (-nologos est toujours ajouté)\n"
+             L"; Arguments added for every instance (-nologos is always added)\n"
              L"Arguments=\n"
-             L"; Arguments ajoutés pour les fantômes seulement (moins de mémoire pour les textures)\n"
+             L"; Arguments added for the ghosts only (less memory for textures)\n"
              L"ArgumentsFantomes=-texStreamMemMB 512\n"
-             L"; DLL de mods chargées au démarrage après fantome.dll (séparées par « ; », relatives à fantome.exe)\n"
+             L"; Mod DLLs loaded at startup after fantome.dll (separated by \";\", relative to fantome.exe)\n"
              L"Mods=\n");
     fclose(f);
 }
@@ -112,7 +112,7 @@ bool ModuleLoaded(DWORD pid, const wchar_t* module)
 
 int wmain(int argc, wchar_t** argv)
 {
-    _setmode(_fileno(stdout), _O_U16TEXT);  // accents corrects dans la console
+    _setmode(_fileno(stdout), _O_U16TEXT);  // correct Unicode output in the console
     _setmode(_fileno(stderr), _O_U16TEXT);
     const std::wstring self = SelfDir();
     const std::wstring ini = self + L"\\fantome.ini";
@@ -121,14 +121,14 @@ int wmain(int argc, wchar_t** argv)
     const bool loopback = IniString(ini, L"Bouclage", L"1") != L"0";
     const bool ghostSound = IniString(ini, L"SonFantomes", L"0") != L"0";
     const std::wstring extra = IniString(ini, L"Arguments", L"");
-    // Fantômes : moins de mémoire pour les textures (option du moteur lue dans CGame::Initialize). Sans ça,
-    // la 4e instance dépassait la limite de mémoire engagée du système et plantait au démarrage.
+    // Ghosts: less memory for textures (engine option read in CGame::Initialize). Without it,
+    // the 4th instance exceeded the system's committed-memory limit and crashed at startup.
     const std::wstring ghostExtra = IniString(ini, L"ArgumentsFantomes", L"-texStreamMemMB 512");
     const std::wstring dll = self + L"\\fantome.dll";
 
     int index = -1;
     if (argc >= 2) {
-        if (_wcsicmp(argv[1], L"hote") == 0 || _wcsicmp(argv[1], L"hôte") == 0)
+        if (_wcsicmp(argv[1], L"hote") == 0)
             index = 0;
         else
             index = _wtoi(argv[1]);
@@ -138,23 +138,23 @@ int wmain(int argc, wchar_t** argv)
                 index = i;
     }
     if (index < 0 || index > 32) {
-        fwprintf(stderr, L"numéro d'instance invalide ou plus de place (1 à 32)\n");
+        fwprintf(stderr, L"invalid instance number or no room left (1 to 32)\n");
         return 2;
     }
     if (SlotTaken(index)) {
-        fwprintf(stderr, L"l'instance %d tourne déjà\n", index);
+        fwprintf(stderr, L"instance %d is already running\n", index);
         return 2;
     }
     if (GetFileAttributesW(game.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        fwprintf(stderr, L"jeu introuvable : %s (voir %s)\n", game.c_str(), ini.c_str());
+        fwprintf(stderr, L"game not found: %s (see %s)\n", game.c_str(), ini.c_str());
         return 1;
     }
     if (GetFileAttributesW(dll.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        fwprintf(stderr, L"fantome.dll introuvable à côté de fantome.exe\n");
+        fwprintf(stderr, L"fantome.dll not found next to fantome.exe\n");
         return 1;
     }
 
-    // Environnement transmis au jeu : identifiant Steam du jeu (lancement hors client) + réglages de la DLL.
+    // Environment passed to the game: the game's Steam id (launch outside the client) + the DLL settings.
     CreateDirectoryW((self + L"\\journaux").c_str(), nullptr);
     wchar_t num[8], log[MAX_PATH];
     swprintf(num, 8, L"%d", index);
@@ -165,7 +165,7 @@ int wmain(int argc, wchar_t** argv)
     SetEnvironmentVariableW(L"DLF_LOOPBACK", loopback ? L"1" : L"0");
     SetEnvironmentVariableW(L"DLF_LOG", log);
 
-    std::wstring cmd = L"\"" + game + L"\" -nologos";  // passe les vidéos d'introduction
+    std::wstring cmd = L"\"" + game + L"\" -nologos";  // skips the intro videos
     if (index > 0 && !ghostSound)
         cmd += L" /nosound";
     if (!extra.empty())
@@ -178,17 +178,17 @@ int wmain(int argc, wchar_t** argv)
     std::wstring cmdBuf = cmd;
     if (!CreateProcessW(game.c_str(), &cmdBuf[0], nullptr, nullptr, FALSE, CREATE_SUSPENDED, nullptr,
                         Dir(game).c_str(), &si, &pi)) {
-        fwprintf(stderr, L"CreateProcess a échoué (%lu)\n", GetLastError());
+        fwprintf(stderr, L"CreateProcess failed (%lu)\n", GetLastError());
         return 1;
     }
 
-    // fantome.dll puis les DLL de mods (clé Mods=, séparées par « ; », chemins relatifs au dossier de
-    // fantome.exe) : une APC « LoadLibraryW » chacune, exécutées dans l'ordre avant le point d'entrée du jeu.
+    // fantome.dll then the mod DLLs (Mods= key, separated by ";", paths relative to fantome.exe's folder):
+    // one "LoadLibraryW" APC each, run in order before the game's entry point.
     std::vector<std::wstring> dlls{dll};
     for (const std::wstring& m : Split(IniString(ini, L"Mods", L""), L';')) {
         std::wstring path = (m.size() > 1 && m[1] == L':') ? m : self + L"\\" + m;
         if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
-            fwprintf(stderr, L"mod introuvable : %s (ignoré)\n", path.c_str());
+            fwprintf(stderr, L"mod not found: %s (ignored)\n", path.c_str());
             continue;
         }
         dlls.push_back(path);
@@ -199,16 +199,16 @@ int wmain(int argc, wchar_t** argv)
         void* remote = VirtualAllocEx(pi.hProcess, nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!remote || !WriteProcessMemory(pi.hProcess, remote, path.c_str(), bytes, nullptr) ||
             !QueueUserAPC(loadLibrary, pi.hThread, reinterpret_cast<ULONG_PTR>(remote))) {
-            fwprintf(stderr, L"préparation de l'injection impossible (%lu) : jeu arrêté\n", GetLastError());
+            fwprintf(stderr, L"could not prepare the injection (%lu): game stopped\n", GetLastError());
             TerminateProcess(pi.hProcess, 1);
             return 1;
         }
         if (path != dll)
-            wprintf(L"Mod chargé au démarrage : %s\n", path.c_str());
+            wprintf(L"Mod loaded at startup: %s\n", path.c_str());
     }
     ResumeThread(pi.hThread);
 
-    wprintf(L"Instance %d lancée (pid %lu) : %s\n", index, pi.dwProcessId, cmd.c_str());
+    wprintf(L"Instance %d launched (pid %lu): %s\n", index, pi.dwProcessId, cmd.c_str());
     bool ok = false;
     for (int i = 0; i < 100 && !ok; ++i) {
         if (WaitForSingleObject(pi.hProcess, 100) == WAIT_OBJECT_0)
@@ -218,11 +218,11 @@ int wmain(int argc, wchar_t** argv)
     DWORD code = STILL_ACTIVE;
     GetExitCodeProcess(pi.hProcess, &code);
     if (ok)
-        wprintf(L"fantome.dll chargée. Journal : %s\n", log);
+        wprintf(L"fantome.dll loaded. Log: %s\n", log);
     else if (code != STILL_ACTIVE)
-        wprintf(L"le jeu s'est arrêté tout de suite (code %lu). Journal : %s\n", code, log);
+        wprintf(L"the game stopped immediately (code %lu). Log: %s\n", code, log);
     else
-        wprintf(L"fantome.dll non détectée après 10 s. Journal : %s\n", log);
+        wprintf(L"fantome.dll not detected after 10 s. Log: %s\n", log);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return ok ? 0 : 1;
