@@ -3,16 +3,9 @@ DLCoop - co-op for up to 32 players in Dying Light 1.55
 
 Files
   DLCoop.exe          the launcher
-  winmm.dll           the mod loader: copied into the game folder, the game loads the mod by itself
   dlcoop_reseau.dll   network fixes (LAN join in 1.55), display name, additional instances
   coop6.dll           the mod: lobby up to 33 slots, fixes for more than 4 players
   logs\               created on first launch
-
-Install / uninstall
-  "Install mod" copies winmm.dll, dlcoop_reseau.dll and coop6.dll into the game folder ("Launch" also does it
-  if needed). At every launch, DLCoop writes all the settings to dlmods.ini in the game folder.
-  Once installed, the mod is also active when the game is started from Steam (with the last saved settings).
-  "Uninstall mod" removes these files and dlmods.ini: the game is back to normal.
 
 Before playing
   - Dying Light version 1.55 (Steam). With any other version the mod does not change anything.
@@ -23,7 +16,7 @@ Before playing
     Never in public matchmaking: Dying Light is protected by VAC.
 
 How to play
-  1. Unzip this folder anywhere.
+  1. Unzip this folder anywhere (nothing is installed, the game folder is not modified).
   2. Start DLCoop.exe. The game is found automatically (the location is saved and checked at every start).
   3. Enter the server IP and the session password (the same for every player, given by the group organizer),
      then click "Launch".
@@ -40,8 +33,8 @@ Window
   Folded menus (click to open), usually not needed:
   Player name         "Hide my Steam name": the game shows the chosen (or random) name instead.
   Instance            main instance by default. "Additional instance": a 2nd (3rd...) game window on the same
-                      PC, with its own Steam identity (cloud saves untouched).
-                      On a local network, also tick "Several instances on this PC".
+                      PC, with its own Steam identity (cloud saves untouched); "No sound" and "Reduced
+                      textures" save memory. On a local network, also tick "Several instances on this PC".
                       These choices go back to the defaults every time DLCoop starts.
   More options        "Max players when I host": players allowed in the game you host, 2 to 32 (the
                       Night Hunter of Be the Zombie is not counted; it only matters for the host).

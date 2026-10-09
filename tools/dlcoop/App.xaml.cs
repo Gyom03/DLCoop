@@ -3,8 +3,7 @@
 //              [/internet | /lan] [/server ip[:port]] [/password X] [/maxplayers N] [/count N]
 // Les autres options sont celles mémorisées par la fenêtre (serveur renseigné = relais Internet, sinon réseau local ;
 // /internet et /lan forcent le mode). Code de sortie : 0 = jeu(x) lancé(s) avec le mod chargé.
-// Relais Internet : le processus reste actif (sans fenêtre) tant qu'un des jeux lancés tourne. Un seul DLCoop par PC est
-// l'agent du relais : un autre DLCoop (fenêtre ou /launch) lui transmet ses lancements (LaunchPipe).
+// Relais Internet : le processus reste actif (sans fenêtre) tant qu'un des jeux lancés tourne.
 // /count N : N instances (la première selon les réglages, les suivantes en instances supplémentaires), 10 s d'écart.
 using System;
 using System.Threading;
@@ -36,10 +35,7 @@ namespace DLCoop
                     Relay = r = null;
                 }
                 if (r == null)
-                {
                     Relay = r = Relay.Connect(s.Server, s.Password);
-                    LaunchPipe.Serve();  // les autres DLCoop de ce PC passeront par cet agent
-                }
                 return r;
             }
         }
@@ -48,54 +44,8 @@ namespace DLCoop
         {
             lock (relayGate)
             {
-                LaunchPipe.Stop();
                 Relay?.Dispose();
                 Relay = null;
-            }
-        }
-
-        static readonly object launchGate = new object();
-
-        /// <summary>
-        /// Lancement par le relais dans CE processus (agent) : adresse demandée au relais, jeu lancé et suivi.
-        /// Sérialisé : Launcher.Launch pose des variables d'environnement du processus (fenêtre et tube de
-        /// lancement peuvent lancer en même temps). Lève RelayBusyException si un autre DLCoop est l'agent.
-        /// </summary>
-        public static int LaunchInRelay(Settings s, out int instance)
-        {
-            lock (launchGate)
-            {
-                var relay = ConnectRelay(s);
-                Launcher.PickInstance(s);  // vérification avant de réserver une adresse
-                int slot = relay.Claim();
-                int pid;
-                try
-                {
-                    pid = Launcher.Launch(s, out instance, out _, slot);
-                }
-                catch
-                {
-                    relay.Release(slot);  // jeu non lancé : adresse rendue
-                    throw;
-                }
-                relay.Track(pid, slot);
-                return pid;
-            }
-        }
-
-        /// <summary>Relais : lance ici, ou transmet à l'agent déjà ouvert sur ce PC. <paramref name="forwarded"/> :
-        /// le jeu est suivi par l'autre DLCoop (celui-ci peut se fermer).</summary>
-        public static int LaunchWithRelay(Settings s, out int instance, out bool forwarded)
-        {
-            try
-            {
-                forwarded = false;
-                return LaunchInRelay(s, out instance);
-            }
-            catch (RelayBusyException)
-            {
-                forwarded = true;
-                return LaunchPipe.Request(s, out instance);
             }
         }
 
@@ -156,9 +106,29 @@ namespace DLCoop
                         s.ExtraInstance = true;
                         s.Instance = 0;
                         s.MultiInstance = true;
+                        s.NoSound = s.ReducedTextures = true;  // plusieurs jeux sur un PC : mémoire
                         s.Name = s.HideName ? Launcher.RandomName() : s.Name;
                     }
-                    int pid = s.Internet ? LaunchWithRelay(s, out _, out _) : Launcher.Launch(s, out _, out _);
+                    int slot = -1;
+                    Relay relay = null;
+                    if (s.Internet)
+                    {
+                        relay = ConnectRelay(s);
+                        Launcher.PickInstance(s);
+                        slot = relay.Claim();
+                    }
+                    int pid;
+                    try
+                    {
+                        pid = Launcher.Launch(s, out _, out _, slot);
+                    }
+                    catch
+                    {
+                        if (slot >= 0)
+                            relay.Release(slot);
+                        throw;
+                    }
+                    relay?.Track(pid, slot);
                     if (!Launcher.WaitForMod(pid))
                         throw new InvalidOperationException("The mod was not detected in the game (see the logs folder).");
                 }

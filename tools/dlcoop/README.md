@@ -1,11 +1,9 @@
 # DLCoop — lanceur du mod coop (paquet à distribuer)
 
-Fenêtre WPF (`DLCoop.exe`, ~50 Ko), **entièrement en anglais**, qui installe / désinstalle
-le mod dans le dossier du jeu et lance Dying Light 1.55. **Sans injection** (depuis la 1.3.0) : le chargeur `winmm.dll`
-(`tools/dlloader`) posé dans le dossier du jeu est chargé par le jeu lui-même et charge `dlcoop_reseau.dll` et
-`coop6.dll` ; le lanceur écrit les réglages dans `dlmods.ini` et lance le jeu normalement (le mod marche aussi lancé
-par Steam). **Aucune dépendance** : .NET Framework 4.7.2, composant de Windows 10 (1803+) et 11 ; DLL en CRT statique
-(`/MT`). `tools/fantome` (outil de développement) garde l'ancienne méthode (jeu créé en pause + APC `LoadLibraryW`).
+Fenêtre WPF (`DLCoop.exe`, ~30 Ko), **entièrement en anglais**, qui lance Dying Light 1.55
+avec les deux DLL du mod chargées avant le point d'entrée du jeu (même méthode que `tools/fantome` : jeu créé en
+pause, une APC `LoadLibraryW` par DLL). **Aucune dépendance** : .NET Framework 4.7.2, composant de Windows 10
+(1803+) et 11 ; DLL en CRT statique (`/MT`). Le dossier du jeu n'est jamais modifié.
 
 ## Compiler le paquet
 ```powershell
@@ -29,7 +27,7 @@ Les DLL sont compilées dans `out\dlcoop\obj` (pas de conflit avec les instances
 - **Fenêtre simplifiée** : visibles seulement l'emplacement du jeu, l'adresse du serveur et
   le mot de passe de session, puis « Launch » ; le reste dans trois menus dépliants fermés (style `Expander` sombre
   dans `App.xaml`) : « Player name » (pseudo masqué, `DLF_NOM`), « Instance » (principale / supplémentaire
-  `DLF_INDEX`, plusieurs instances sur ce PC
+  `DLF_INDEX`, sans son `/nosound`, textures réduites `-texStreamMemMB 512`, plusieurs instances sur ce PC
   `DLF_LOOPBACK`) et « More options » (« Max players when I host » 2..32, mémorisé : `COOP6_Places` = valeur + 1 pour le zombie ;
   « Disable the EOS connection » `COOP6_SansEos` ; « Close after launch »).
   Les choix d'instance reviennent aux valeurs par défaut à chaque démarrage (instance principale, son, textures
@@ -47,6 +45,6 @@ Les DLL sont compilées dans `out\dlcoop\obj` (pas de conflit avec les instances
 - Choix mémorisés dans `%APPDATA%\DLCoop\settings.txt` ; journaux dans `logs\` à côté de l'exe.
 - Ligne de commande : `DLCoop.exe /launch [/instance N] [/multi] [/name Nom] [/game chemin] [/internet | /lan]
   [/server adresse] [/password X] [/count N]` (`/internet`, `/lan` forcent le mode ; instances suivantes de `/count`
-  en instances supplémentaires) (sans fenêtre, code de sortie 0 si les deux DLL sont chargées dans le jeu ;
+  sans son et à textures réduites) (sans fenêtre, code de sortie 0 si les deux DLL sont chargées dans le jeu ;
   avec le relais, le processus reste actif tant qu'un jeu lancé tourne ; `/count N` : N instances à 10 s d'écart).
 - Compatible avec `tools/fantome` et `pont.exe` (mêmes verrous `Local\DLFantome_slot_N`).

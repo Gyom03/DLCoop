@@ -32,15 +32,6 @@
                     <TextBox x:Name="GamePath" IsReadOnly="True"/>
                 </DockPanel>
                 <TextBlock x:Name="GameState" Margin="0,4,0,0" FontSize="12"/>
-                <DockPanel Margin="0,6,0,0">
-                    <Button x:Name="InstallButton" DockPanel.Dock="Left" Content="Install mod" Margin="0,0,6,0"
-                            Click="InstallMod"
-                            ToolTip="Copies the loader (winmm.dll) and the mod into the game folder"/>
-                    <Button x:Name="UninstallButton" DockPanel.Dock="Left" Content="Uninstall mod" Click="UninstallMod"
-                            ToolTip="Removes the loader and the mod from the game folder"/>
-                    <TextBlock x:Name="InstallState" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="12"
-                               TextAlignment="Right"/>
-                </DockPanel>
             </StackPanel>
         </Border>
 
@@ -88,6 +79,8 @@
                                  Content="Additional instance #" Checked="UpdateState"/>
                     <ComboBox x:Name="InstanceNumber" Width="70" Margin="6,4,0,0"/>
                 </StackPanel>
+                <CheckBox x:Name="NoSound" Content="No sound"/>
+                <CheckBox x:Name="ReducedTextures" Content="Reduced textures (less memory)"/>
                 <CheckBox x:Name="MultiInstance" Content="Several instances on this PC (local network only)"/>
             </StackPanel>
         </Expander>

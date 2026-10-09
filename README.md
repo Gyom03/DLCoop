@@ -1,5 +1,11 @@
 # DLCoop — coop massive pour Dying Light 1.55
 
+> ⚠️ **Branche historique `dll-injection`.** C'est l'ancienne version : le lanceur (1.2.0) démarre le jeu en
+> pause et y **injecte** les DLL du mod. Ce motif est signalé par certains antivirus. La version actuelle et
+> recommandée, sans injection (chargeur `winmm.dll`), est sur la branche **`main`**.
+> Différences : [docs/chargement-des-mods.md](docs/chargement-des-mods.md).
+
+
 ![Partie coop avec le mod : le joueur au premier plan, les autres joueurs alignés contre un mur, la liste des coéquipiers à gauche](assets/screenshot.png)
 
 **DLCoop** permet de jouer à **Dying Light 1.55** (Steam) en coopération **jusqu'à 32 joueurs** (+ 1 joueur zombie
@@ -7,7 +13,7 @@ en mode « Be the Zombie »), au lieu de 4. Il comprend :
 
 - un **mod** (`coop6.dll`) qui lève les limites du jeu (lobby, liste des joueurs, HUD, couleurs, difficulté,
   apparitions de zombies, rassemblement de mission, Be the Zombie à N chasseurs…) ;
-- un **lanceur** Windows (`DLCoop.exe`) qui installe le mod, le règle et lance le jeu ;
+- un **lanceur** Windows (`DLCoop.exe`) qui règle le mod, lance le jeu et y injecte les DLL ;
 - un **serveur relais** à installer sur un petit VPS, pour jouer **par Internet sans VPN** ni port à ouvrir ;
 - un outil de **plusieurs instances du jeu sur un même PC** (tests, ou plusieurs joueurs sur une machine).
 
@@ -44,7 +50,6 @@ adresse par fenêtre). **Uninstall mod** remet le dossier du jeu dans son état 
 | `mods/coop6/` | le mod coop (`coop6.dll`) : liste de toutes les modifications, avec leurs adresses dans la 1.55 | [`mods/coop6/README.md`](mods/coop6/README.md) |
 | `src/` | structures du jeu utilisées par le mod (en-têtes, dispositions vérifiées sur le code machine) | — |
 | `tools/dlcoop/` | le lanceur `DLCoop.exe` (WPF, .NET Framework 4.7.2) et la construction du paquet | [`docs/lanceur.md`](docs/lanceur.md) |
-| `tools/dlloader/` | le chargeur de mods `winmm.dll` (le jeu charge le mod lui-même, sans injection) | [`docs/chargement-des-mods.md`](docs/chargement-des-mods.md) |
 | `tools/relais/` | le serveur relais (C++17, Linux), service systemd, pare-feu, conteneur | [`docs/serveur-relais.md`](docs/serveur-relais.md) |
 | `tools/fantome/` | `dlcoop_reseau.dll` (réseau, identités, instances), `fantome.exe` et `pont.exe` (outils de test) | [`docs/plusieurs-instances.md`](docs/plusieurs-instances.md) |
 | `tests/` | tests sans le jeu : course du chargeur, protocole du relais, installation du mod | — |

@@ -42,6 +42,8 @@ namespace DLCoop
             ExtraInstance.IsChecked = v.ExtraInstance;
             InstanceNumber.SelectedIndex = Math.Max(0, Math.Min(Launcher.MaxInstances - 1, v.Instance));
             MultiInstance.IsChecked = v.MultiInstance;
+            NoSound.IsChecked = v.NoSound;
+            ReducedTextures.IsChecked = v.ReducedTextures;
             ServerAddress.Text = v.Server;
             SessionPassword.Text = v.Password;
             DisableEos.IsChecked = v.DisableEos;
@@ -58,6 +60,8 @@ namespace DLCoop
             s.ExtraInstance = ExtraInstance.IsChecked == true;
             s.Instance = InstanceNumber.SelectedIndex;  // 0 = auto
             s.MultiInstance = MultiInstance.IsChecked == true;
+            s.NoSound = NoSound.IsChecked == true;
+            s.ReducedTextures = ReducedTextures.IsChecked == true;
             s.Server = ServerAddress.Text.Trim();
             s.Internet = s.Server.Length > 0;  // serveur renseigné : relais ; vide : réseau local / VPN
             s.Password = SessionPassword.Text;
@@ -90,52 +94,6 @@ namespace DLCoop
                     : "Version " + version + ": the mod only works with version 1.55 (it will not change anything)";
                 GameState.Foreground = (Brush)FindResource("Erreur");
             }
-            UpdateInstall();
-        }
-
-        void UpdateInstall()
-        {
-            if (InstallState == null)
-                return;
-            s.Game = GamePath.Text;
-            bool game = File.Exists(s.Game);
-            bool installed = game && Launcher.IsInstalled(s);
-            bool present = game && Launcher.IsPresent(s);
-            InstallState.Text = !game ? "" : installed ? "Mod installed ✓"
-                              : present ? "Update available (Install or Launch)" : "Mod not installed";
-            InstallState.Foreground = (Brush)FindResource(installed ? "Ok" : present ? "Accent" : "Pale");
-            InstallButton.IsEnabled = game;
-            UninstallButton.IsEnabled = present;
-        }
-
-        void InstallMod(object sender, RoutedEventArgs e)
-        {
-            Read();
-            try
-            {
-                Launcher.Install(s);
-                SetStatus("Mod installed in the game folder.", "Ok");
-            }
-            catch (Exception ex)
-            {
-                SetStatus(ex.Message, "Erreur");
-            }
-            UpdateInstall();
-        }
-
-        void UninstallMod(object sender, RoutedEventArgs e)
-        {
-            Read();
-            try
-            {
-                Launcher.Uninstall(s);
-                SetStatus("Mod removed from the game folder.", "Ok");
-            }
-            catch (Exception ex)
-            {
-                SetStatus(ex.Message, "Erreur");
-            }
-            UpdateInstall();
         }
 
         void UpdateState(object sender, RoutedEventArgs e)
@@ -148,7 +106,7 @@ namespace DLCoop
                 DisplayName.Text = Launcher.RandomName();
             bool extra = ExtraInstance.IsChecked == true;
             bool internet = ServerAddress.Text.Trim().Length > 0;
-            InstanceNumber.IsEnabled = extra;
+            InstanceNumber.IsEnabled = NoSound.IsEnabled = ReducedTextures.IsEnabled = extra;
             if (extra && !internet)
                 MultiInstance.IsChecked = true;  // une 2e instance sur ce PC exige les adresses locales
             MultiInstance.IsEnabled = !internet;  // relais : adresses locales toujours utilisées
@@ -207,35 +165,29 @@ namespace DLCoop
             s.Save();
             LaunchButton.IsEnabled = false;
             SetStatus("Launching…", "Pale");
+            int slot = -1;
+            Relay relay = null;
             try
             {
-                bool forwarded = false;  // jeu lancé par l'autre DLCoop de ce PC (agent du relais)
-                int pid;
                 if (s.Internet)
                 {
                     SetStatus("Connecting to the server…", "Pale");
-                    var r = await Task.Run(() =>
-                    {
-                        int p = App.LaunchWithRelay(s, out _, out bool f);
-                        return (Pid: p, Forwarded: f);
-                    });
-                    pid = r.Pid;
-                    forwarded = r.Forwarded;
+                    relay = await Task.Run(() => App.ConnectRelay(s));
+                    Launcher.PickInstance(s);  // vérification avant de réserver une adresse
+                    slot = await Task.Run(() => relay.Claim());
                 }
-                else
-                {
-                    pid = Launcher.Launch(s, out _, out _);
-                }
+                int pid = Launcher.Launch(s, out int instance, out string name, slot);
+                relay?.Track(pid, slot);
+                slot = -1;
                 SetStatus("Launching…", "Pale");
                 bool ok = await Task.Run(() => Launcher.WaitForMod(pid));
                 if (ok)
                 {
-                    SetStatus(forwarded ? "Game launched (through the DLCoop already connected to the relay)."
-                                        : "Game launched.", "Ok");
+                    SetStatus("Game launched.", "Ok");
                     if (s.CloseAfterLaunch)
                     {
                         await Task.Delay(1200);
-                        if (s.Internet && !forwarded)
+                        if (relay != null)
                         {
                             // L'agent du relais doit rester actif pendant la partie.
                             minimizedAfterLaunch = true;
@@ -254,6 +206,8 @@ namespace DLCoop
             }
             catch (Exception ex)
             {
+                if (relay != null && slot >= 0)
+                    relay.Release(slot);  // jeu non lancé : adresse rendue
                 SetStatus(ex.Message, "Erreur");
             }
             finally

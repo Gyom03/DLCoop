@@ -20,13 +20,6 @@ using System.Threading;
 
 namespace DLCoop
 {
-    /// <summary>Un autre DLCoop de ce PC est déjà l'agent du relais.</summary>
-    public sealed class RelayBusyException : InvalidOperationException
-    {
-        public RelayBusyException()
-            : base("Another DLCoop is already connected to a relay on this PC.") { }
-    }
-
     public sealed class Relay : IDisposable
     {
         public const int DefaultPort = 20300;
@@ -102,10 +95,9 @@ namespace DLCoop
             var agentLock = new Mutex(false, @"Local\DLCoop_relais", out bool created);
             if (!created)
             {
-                // Un seul agent par PC (il tient les adresses 127.0.0.N des joueurs distants) : l'appelant transmet
-                // alors son lancement à l'agent déjà ouvert (LaunchPipe).
                 agentLock.Dispose();
-                throw new RelayBusyException();
+                throw new InvalidOperationException(
+                    "Another DLCoop window is already connected to a relay: use it to start more instances.");
             }
             Relay r = null;
             try
