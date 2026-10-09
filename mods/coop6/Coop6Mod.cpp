@@ -41,6 +41,9 @@
 //       de 1 à 4 dans les données) et objets activés (Z5) : cas « 4 » pour 4 et plus.
 //   B7  AISpawnSystem::Manager::RegenerateSpawnPlan : notes des lieux (B6) et plan par joueur sur la même fenêtre
 //       tournante de 5 joueurs (sinon rangs >= 5 lus hors des tableaux de 5 : zombies des joueurs 6+ mal placés).
+//   E1  engine CEosAuthenticator::Login -> ret : pas de connexion EOS (réglage SansEos).
+//   E2  LobbySettings::LoadOnlyGameVisibility / LoadSettings (vftables) : m_GameVisibility (+0x10) forcé à 3 (LAN)
+//       après chargement -> le menu affiche « LAN » par défaut au lancement (réglage ForcerLan ; non verrouillé).
 //
 // Réglages : coop6.ini à côté de la DLL. Journal : coop6_instance_N.log (N = DLF_INDEX de fantome) ou coop6.log.
 #define NOMINMAX
@@ -84,6 +87,8 @@ namespace {
 
 // --- Repères dans gamedll 1.55 (adresses relatives au début du module) --------------------------------
 constexpr std::uintptr_t kRvaInitializeLobbyInfo = 0x4a62c0;
+constexpr std::uintptr_t kRvaLoadOnlyGameVisibility = 0x4e4200;  // LobbySettings::LoadOnlyGameVisibility()
+constexpr std::uintptr_t kRvaLoadLobbySettings = 0x4e4250;       // LobbySettings::LoadSettings(bool)
 constexpr std::uintptr_t kRvaValidateLobbySlots = 0x4b307a;  // mov edx,5 ; mov ecx,0Ch
 constexpr std::uintptr_t kRvaGetMaxStamina = 0x5eb080;
 constexpr std::uintptr_t kRvaGetMaxHealthCoopMul = 0x5eb2a0;
@@ -247,6 +252,7 @@ struct Settings {
     bool hud = true;         // C2
     bool diagnostic = true;  // journal de l'état du lobby (raisons de refus, bits publiés, compteurs)
     bool noEos = true;       // E1 : pas de connexion EOS (multiplateforme), inutile en LAN
+    bool forceLan = true;    // E2 : visibilité « LAN » par défaut au lancement (le menu affiche LAN ; non verrouillé)
 } g_settings;
 
 wchar_t g_dir[MAX_PATH];
@@ -288,6 +294,7 @@ void LoadSettings()
     g_settings.hud = Setting(ini, L"Hud", 1) != 0;
     g_settings.diagnostic = Setting(ini, L"Diagnostic", 1) != 0;
     g_settings.noEos = Setting(ini, L"SansEos", 1) != 0;
+    g_settings.forceLan = Setting(ini, L"ForcerLan", 1) != 0;
 }
 
 // E1 : CEosAuthenticator::Login (engine 0x1806a28e0, appelants sans valeur de retour) -> `ret`. Chaque instance
@@ -422,6 +429,34 @@ void ModInitializeLobbyInfo(SessionCooperative* self, Sessions::LobbyInfo& info,
         info.m_PublicSlots = static_cast<unsigned>(g_settings.places);
         Log("lobby : type de session %d, places publiques 5 -> %u", info.m_SessionType, info.m_PublicSlots);
     }
+}
+
+// --- E2 : visibilité « LAN » par défaut au lancement ------------------------------------------------------
+// GameDI::GetGameVisibility lit m_GameVisibility à LobbySettings+0x10 (SettingsDI+0xf0 hors session, SessionDI+0x7d68
+// en session) — 0 publique, 1 amis, 2 privée, 3 LAN. Au démarrage, LobbySettings::LoadOnlyGameVisibility / LoadSettings
+// chargent cette valeur depuis la config sauvegardée (« L_GameVisibility »). On enveloppe ces deux chargeurs pour forcer
+// le champ à 3 (LAN) après coup : le menu affiche donc « LAN » par défaut quel que soit le dernier réglage enregistré.
+// Non verrouillé : le menu écrit le champ par un autre chemin (UIOptionTextSelect), le joueur peut rebasculer ensuite.
+using LoadOnlyGameVisibilityFn = void (*)(void*);
+using LoadLobbySettingsFn = void (*)(void*, bool);
+LoadOnlyGameVisibilityFn g_origLoadOnlyGameVisibility = nullptr;
+LoadLobbySettingsFn g_origLoadLobbySettings = nullptr;
+
+void ForceLanVisibility(void* lobbySettings)
+{
+    *reinterpret_cast<std::uint32_t*>(static_cast<std::uint8_t*>(lobbySettings) + 0x10) = 3;  // 3 = LAN
+}
+
+void ModLoadOnlyGameVisibility(void* self)
+{
+    g_origLoadOnlyGameVisibility(self);
+    ForceLanVisibility(self);
+}
+
+void ModLoadLobbySettings(void* self, bool fromProfile)
+{
+    g_origLoadLobbySettings(self, fromProfile);
+    ForceLanVisibility(self);
 }
 
 // --- A3 : places d'équipe humaines au-delà de 4 -----------------------------------------------------------
@@ -1194,8 +1229,8 @@ void Install()
         Log("ERREUR : gamedll_x64_rwdi.dll non chargée — mod inactif");
         return;
     }
-    Log("gamedll à %p ; Places=%d Difficulte=%d Couleurs=%d Hud=%d SansEos=%d", g_base, g_settings.places,
-        g_settings.difficulty, g_settings.colors, g_settings.hud, g_settings.noEos);
+    Log("gamedll à %p ; Places=%d Difficulte=%d Couleurs=%d Hud=%d SansEos=%d ForcerLan=%d", g_base, g_settings.places,
+        g_settings.difficulty, g_settings.colors, g_settings.hud, g_settings.noEos, g_settings.forceLan);
     if (g_settings.noEos)
         InstallNoEos();  // indépendant des contrôles de gamedll
     bool ok = true;
@@ -1218,6 +1253,18 @@ void Install()
     const unsigned char places = static_cast<unsigned char>(g_settings.places);
     WriteMemory(g_base + kRvaValidateLobbySlots + 1, &places, 1);
     Log("A1 InitializeLobbyInfo enveloppée dans %d vftable(s) (attendu 2) ; A2 plafond 5 -> %d", nLobby, places);
+
+    // E2 : visibilité « LAN » par défaut au lancement (le menu affiche LAN ; non verrouillé).
+    if (g_settings.forceLan) {
+        g_origLoadOnlyGameVisibility = At<LoadOnlyGameVisibilityFn>(kRvaLoadOnlyGameVisibility);
+        g_origLoadLobbySettings = At<LoadLobbySettingsFn>(kRvaLoadLobbySettings);
+        const int nVis1 = PatchVftables(g_base + kRvaLoadOnlyGameVisibility,
+                                        reinterpret_cast<void*>(&ModLoadOnlyGameVisibility));
+        const int nVis2 = PatchVftables(g_base + kRvaLoadLobbySettings,
+                                        reinterpret_cast<void*>(&ModLoadLobbySettings));
+        Log("E2 visibilité LAN par défaut : LoadOnlyGameVisibility enveloppée dans %d vftable(s), LoadSettings dans %d",
+            nVis1, nVis2);
+    }
 
     // A3 : places d'équipe. CheckCanConnect : `mov edi,1 ; jmp short +2Fh` (vers la suite des contrôles, comme
     // quand l'identifiant est trouvé dans une place) + nop, à la place de l'erreur 0x2e.

@@ -17,7 +17,7 @@ hosts).
 Log: `coop6_instance_N.log` next to the DLL (appended on each launch, crash reports included).
 Settings: `coop6.ini` — `Places` 3..33 (slots when hosting, zombie player included; default 7 = 6 humans; DLCoop:
 "Max players when I host" + 1), `Difficulte`, `Couleurs`, `Hud`, `Diagnostic` (log of the lobby state and searches),
-`SansEos` (default 1).
+`SansEos` (default 1), `ForcerLan` (default 1).
 
 ## What the DLL does
 Everything is installed in `DllMain`, after checking the bytes of 1.55 at each spot (otherwise nothing is touched).
@@ -40,6 +40,7 @@ Everything is installed in `DllMain`, after checking the bytes of 1.55 at each s
 | F1 | `GatherPlace::Update` 0x180aa9f00 (detour + trampoline) | mission gathering: ≥ 70% of players in the zone for 5 s (fixed values) → the local player left outside is teleported to the gather point (`PlayerDI::SetPosAndRot` 0x180bad0b0) |
 | D1 | `HumanAI::GetMaxHealthCoopMul` 0x1805eb2a0, `GetMeleeDamageCoopMul` 0x1805eb330 (detours), `GetMaxStamina` 0x1805eb080 (4 vftables) | difficulty extended to 5-6 players (otherwise it drops back to solo values) |
 | E1 | engine: `CEosAuthenticator::Login` 0x1806a28e0 | `ret`: no EOS connection (useless on LAN; froze instances via the steam_api64 callback registry) |
+| E2 | `LobbySettings::LoadOnlyGameVisibility` 0x1804e4200 and `LoadSettings` 0x1804e4250 (vftable wrappers) | `m_GameVisibility` (`LobbySettings+0x10`) forced to 3 (**LAN**) after loading → the menu shows "LAN" by default at launch, whatever was last saved. Not locked (the menu writes the field through another path). Setting `ForcerLan` (default 1) |
 | G1 | `AISpawnBoxCompound::GetNoInitiallySpawned` 0x1801cce30 (Ghidra `vfunc_151`), byte 0x1801ccede | placed zombie groups, zombies at the start: "4 players" case for 4 and more (`jne` → `jl`); before: solo value at 5+ |
 | G2 | `AISpawnBoxCompound::CalcExpectedNumber` 0x1801ccf40 (`vfunc_115`), byte 0x1801ccfee | same, maximum total (covers `AIRandomSpawnBoxCompound`, which fills the same fields) |
 | G3 | `Quests::FillAreaPhase::GetReqCountToPass` 0x180e51730, byte 0x180e517d1 | required count of "fill an area" steps |
