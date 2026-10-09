@@ -1,14 +1,15 @@
 # DLCoop — massive co-op for Dying Light 1.55
 
+### Play Dying Light 1.55 (Steam) in co-op with up to 32 players.
+
 ![Co-op session with the mod: the local player in the foreground, other players lined up against a wall, the teammate list on the left](assets/screenshot.png)
 
-**DLCoop** raises Dying Light 1.55's co-op limit from 4 to **32 players** (+1 Night Hunter). It ships:
-
-- **`coop6.dll`** — the mod: lobby, player list, HUD, colors, difficulty, zombie spawns, mission gathering and
-  Be the Zombie, all scaled past 4 players.
-- **`DLCoop.exe`** — a Windows launcher: install the mod, set the options, launch the game.
-- **a relay server** — play over the Internet, no VPN, no port forwarding.
-- **a multi-instance tool** — run several game windows on one PC.
+- **Up to 32 players** (+1 Night Hunter) instead of 4.
+- **Auto-teleport** stragglers to the mission gather point.
+- **Be the Zombie** working and rebalanced for any number of hunters.
+- **Rebalanced** enemies, spawns, quests and loot with 4+ players.
+- **Just one launcher** — install, set options, play.
+- **Free.**
 
 Personal mod, **not affiliated with Techland**. No game file is shipped or modified on disk: the mod patches the game in
 memory after verifying the 1.55 bytes.
