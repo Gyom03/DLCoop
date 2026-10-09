@@ -1,8 +1,8 @@
-// Lancement de Dying Light 1.55 avec le mod, sans injection : le chargeur winmm.dll (tools/dlloader), installé dans
-// le dossier du jeu avec dlcoop_reseau.dll et coop6.dll, est chargé par le jeu lui-même et charge les mods. Les options
-// passent par l'environnement du jeu (DLF_* pour dlcoop_reseau.dll, COOP6_* pour coop6.dll), hérité du lanceur, et
-// sont aussi écrites dans dlmods.ini (repli pour un lancement par Steam). Le dossier du jeu est modifié par
-// Install / Uninstall. Interface et messages : en anglais uniquement.
+// Launches Dying Light 1.55 with the mod, no injection: the winmm.dll loader (tools/dlloader), installed in the
+// game folder with dlcoop_reseau.dll and coop6.dll, is loaded by the game itself and loads the mods. The options
+// go through the game's environment (DLF_* for dlcoop_reseau.dll, COOP6_* for coop6.dll), inherited from the
+// launcher, and are also written to dlmods.ini (a fallback for a Steam launch). The game folder is modified by
+// Install / Uninstall. UI and messages: English only.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -16,22 +16,22 @@ using Microsoft.Win32;
 
 namespace DLCoop
 {
-    /// <summary>Choix de l'utilisateur, mémorisés dans %APPDATA%\DLCoop\settings.txt (clé=valeur).</summary>
+    /// <summary>User choices, saved in %APPDATA%\DLCoop\settings.txt (key=value).</summary>
     public sealed class Settings
     {
         public string Game = "";
         public bool HideName;
         public string Name = "";
-        // Instance : remis aux valeurs par défaut à chaque démarrage (instance principale, son, textures complètes).
+        // Instance: reset to defaults on each start (main instance).
         public bool ExtraInstance;
-        public int Instance;                // 0 = automatique (premier numéro libre) pour une instance supplémentaire
-        public bool MultiInstance;          // adresses 127.0.0.N (plusieurs instances sur ce PC, réseau local)
+        public int Instance;                // 0 = automatic (first free number) for an additional instance
+        public bool MultiInstance;          // 127.0.0.N addresses (several instances on this PC, local network)
         public bool DisableEos = true;
         public bool CloseAfterLaunch = true;
-        public int MaxPlayers = Launcher.MaxInstances - 1;  // joueurs humains au plus quand on héberge (le zombie BtZ en plus)
-        public bool Internet;               // relais Internet (Relay.cs) : déduit du serveur (renseigné = relais)
-        public string Server = "";          // adresse du relais (ip[:port]) ; défaut : server.txt à côté de l'exe
-        public string Password = "";        // mot de passe de la session (le même pour tous les joueurs)
+        public int MaxPlayers = Launcher.MaxInstances - 1;  // max human players when hosting (the BtZ zombie on top)
+        public bool Internet;               // Internet relay (Relay.cs): inferred from the server (filled in = relay)
+        public string Server = "";          // relay address (ip[:port]); default: server.txt next to the exe
+        public string Password = "";        // session password (the same for every player)
 
         static string FilePath => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DLCoop", "settings.txt");
@@ -45,14 +45,14 @@ namespace DLCoop
                     return s;
                 s.Apply(File.ReadAllLines(FilePath, Encoding.UTF8));
             }
-            catch (Exception) { /* réglages illisibles : valeurs par défaut */ }
+            catch (Exception) { /* unreadable settings: defaults */ }
             var defaults = new Settings();
             s.ExtraInstance = defaults.ExtraInstance;
             s.Instance = defaults.Instance;
             s.MultiInstance = defaults.MultiInstance;
             if (string.IsNullOrWhiteSpace(s.Server))
             {
-                // Paquet préparé pour un groupe : adresse du relais fournie (build.ps1 -Relais).
+                // Package prepared for a group: relay address provided (build.ps1 -Relais).
                 try
                 {
                     string f = Path.Combine(Launcher.Folder, "server.txt");
@@ -73,17 +73,17 @@ namespace DLCoop
                 Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
                 File.WriteAllLines(FilePath, Lines(), Encoding.UTF8);
             }
-            catch (Exception) { /* non bloquant */ }
+            catch (Exception) { /* non-blocking */ }
         }
 
-        /// <summary>Réglages en lignes « clé=valeur » (fichier settings.txt, tube de lancement LaunchPipe).</summary>
+        /// <summary>Settings as "key=value" lines (settings.txt file, the LaunchPipe launch pipe).</summary>
         public IEnumerable<string> Lines() => typeof(Settings).GetFields().Where(f => !f.IsStatic).Select(f =>
         {
             object v = f.GetValue(this);
             return f.Name + "=" + (v is bool b ? (b ? "1" : "0") : Convert.ToString(v));
         });
 
-        /// <summary>Réglages tels quels, sans les retouches de Load (tube de lancement).</summary>
+        /// <summary>Settings as-is, without Load's adjustments (the launch pipe).</summary>
         public static Settings FromLines(IEnumerable<string> lines)
         {
             var s = new Settings();
@@ -116,9 +116,9 @@ namespace DLCoop
     {
         public const string NetworkDll = "dlcoop_reseau.dll";
         public const string ModDll = "coop6.dll";
-        public const string LoaderDll = "winmm.dll";       // relais posé dans le dossier du jeu (tools/dlloader)
-        public const string ConfigIni = "dlmods.ini";      // lu par le relais, réécrit à chaque lancement
-        // Fichiers du chargeur, installés dans le dossier du jeu.
+        public const string LoaderDll = "winmm.dll";       // proxy placed in the game folder (tools/dlloader)
+        public const string ConfigIni = "dlmods.ini";      // read by the loader, rewritten on each launch
+        // Loader files, installed in the game folder.
         public static readonly string[] InstalledFiles = { LoaderDll, NetworkDll, ModDll };
         const string GameAppId = "239140";
         static readonly string[] NamePrefixes = { "Runner", "Climber", "Prowler", "Watcher", "Nomad", "Scout",
@@ -126,8 +126,8 @@ namespace DLCoop
 
         public static string Folder => AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
 
-        /// <summary>Tous les DyingLightGame.exe trouvés : clé de désinstallation Steam, bibliothèques Steam
-        /// (libraryfolders.vdf + appmanifest_239140.acf pour le nom réel du dossier), dossier par défaut.</summary>
+        /// <summary>All DyingLightGame.exe found: Steam uninstall key, Steam libraries
+        /// (libraryfolders.vdf + appmanifest_239140.acf for the real folder name), default folder.</summary>
         public static List<string> FindGames()
         {
             var folders = new List<string>();
@@ -140,7 +140,7 @@ namespace DLCoop
                         if (k?.GetValue("InstallLocation") is string loc && loc.Length > 0)
                             folders.Add(loc);
                 }
-                catch (Exception) { /* clé absente ou illisible */ }
+                catch (Exception) { /* key absent or unreadable */ }
             }
             var libraries = new List<string>();
             string steam = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string;
@@ -154,7 +154,7 @@ namespace DLCoop
                         foreach (Match m in Regex.Matches(File.ReadAllText(vdf), "\"path\"\\s+\"([^\"]+)\""))
                             libraries.Add(m.Groups[1].Value.Replace(@"\\", @"\"));
                 }
-                catch (Exception) { /* fichier illisible */ }
+                catch (Exception) { /* unreadable file */ }
             }
             libraries.Add(@"C:\Program Files (x86)\Steam");
             foreach (string lib in libraries.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -170,7 +170,7 @@ namespace DLCoop
                             sub = m.Groups[1].Value;
                     }
                 }
-                catch (Exception) { /* manifeste illisible */ }
+                catch (Exception) { /* unreadable manifest */ }
                 folders.Add(Path.Combine(lib, "steamapps", "common", sub));
             }
             return folders.Select(d => Path.Combine(d, "DyingLightGame.exe"))
@@ -179,15 +179,15 @@ namespace DLCoop
                           .ToList();
         }
 
-        /// <summary>Premier DyingLightGame.exe trouvé, en 1.55 de préférence (ou chaîne vide).</summary>
+        /// <summary>First DyingLightGame.exe found, preferably 1.55 (or an empty string).</summary>
         public static string FindGame()
         {
             var all = FindGames();
             return all.FirstOrDefault(e => { GameVersion(e, out bool ok); return ok; }) ?? all.FirstOrDefault() ?? "";
         }
 
-        /// <summary>Version du jeu (« 1.55 »…) ; <paramref name="supported"/> vrai pour la 1.55 seulement.
-        /// Chaîne vide si le fichier n'existe pas.</summary>
+        /// <summary>Game version ("1.55"...); <paramref name="supported"/> true for 1.55 only.
+        /// Empty string if the file does not exist.</summary>
         public static string GameVersion(string exe, out bool supported)
         {
             supported = false;
@@ -199,9 +199,9 @@ namespace DLCoop
         }
 
         /// <summary>
-        /// À chaque démarrage : le chemin mémorisé est gardé s'il existe et que c'est la 1.55 ; sinon nouvelle
-        /// recherche (installation déplacée, autre bibliothèque…), chemin enregistré dès qu'il est trouvé.
-        /// Renvoie un message pour la fenêtre (vide si rien n'est à signaler).
+        /// On each start: the saved path is kept if it exists and is 1.55; otherwise a new search (moved install,
+        /// another library...), with the path saved as soon as it is found.
+        /// Returns a message for the window (empty if there is nothing to report).
         /// </summary>
         public static string CheckInstallation(Settings s)
         {
@@ -219,28 +219,28 @@ namespace DLCoop
             s.Game = found;
             s.Save();
             if (!saved)
-                return "";  // première détection : rien à signaler
+                return "";  // first detection: nothing to report
             return exists ? "A version 1.55 installation was found and saved (the previous one was not 1.55)."
                           : "The game has moved: new location saved (previous: " + previous + ").";
         }
 
         public static bool SteamRunning() => Process.GetProcessesByName("steam").Length > 0;
 
-        // ------------------------------------------------------------------ Chargeur de mods (winmm.dll)
-        // Le jeu charge lui-même ses mods parce que winmm.dll (le relais) est dans son dossier : aucun
-        // processus extérieur n'écrit dans sa mémoire (plus de motif « injection » signalé par les antivirus).
+        // ------------------------------------------------------------------ Mod loader (winmm.dll)
+        // The game loads its mods itself because winmm.dll (the proxy) is in its folder: no outside process
+        // writes into its memory (no "injection" pattern flagged by antivirus).
 
         public static string GameDir(Settings s) => Path.GetDirectoryName(s.Game) ?? "";
 
-        /// <summary>Vrai si le chargeur et les deux mods sont posés dans le dossier du jeu ET identiques à ceux de
-        /// ce lanceur (sinon une mise à jour de DLCoop ne remplacerait jamais les fichiers déjà installés).</summary>
+        /// <summary>True if the loader and both mods are in the game folder AND identical to this launcher's
+        /// (otherwise a DLCoop update would never replace the already-installed files).</summary>
         public static bool IsInstalled(Settings s)
         {
             string dir = GameDir(s);
             return dir.Length > 0 && InstalledFiles.All(f => SameFile(Path.Combine(Folder, f), Path.Combine(dir, f)));
         }
 
-        /// <summary>Le mod est-il présent dans le dossier du jeu, à jour ou non ?</summary>
+        /// <summary>Is the mod present in the game folder, up to date or not?</summary>
         public static bool IsPresent(Settings s)
         {
             string dir = GameDir(s);
@@ -253,16 +253,15 @@ namespace DLCoop
             {
                 if (!File.Exists(a) || !File.Exists(b) || new FileInfo(a).Length != new FileInfo(b).Length)
                     return false;
-                return File.ReadAllBytes(a).SequenceEqual(File.ReadAllBytes(b));  // quelques centaines de Ko
+                return File.ReadAllBytes(a).SequenceEqual(File.ReadAllBytes(b));  // a few hundred KB
             }
             catch (IOException) { return false; }
             catch (UnauthorizedAccessException) { return false; }
         }
 
         /// <summary>
-        /// Copie le chargeur (winmm.dll) et les mods (dlcoop_reseau.dll, coop6.dll), posés à côté de
-        /// DLCoop.exe, dans le dossier du jeu. Modifie l'installation du jeu (exception assumée pour ce
-        /// chargeur, comme la désactivation de DLML). Lève une exception avec un message lisible en cas d'échec.
+        /// Copies the loader (winmm.dll) and the mods (dlcoop_reseau.dll, coop6.dll), sitting next to DLCoop.exe,
+        /// into the game folder. Modifies the game install. Throws with a readable message on failure.
         /// </summary>
         public static void Install(Settings s)
         {
@@ -275,8 +274,8 @@ namespace DLCoop
                 if (!File.Exists(src))
                     throw new InvalidOperationException(f + " is missing next to DLCoop.exe (reinstall DLCoop).");
             }
-            // dsound.dll de DLML : s'il est actif il peut agir sur le lobby. On ne le touche pas, mais on
-            // prévient en laissant le README le signaler ; ici on installe seulement notre chargeur winmm.
+            // DLML's dsound.dll: if active it may affect the lobby. We do not touch it (the README warns about
+            // it); here we only install our winmm loader.
             foreach (string f in InstalledFiles)
             {
                 string dst = Path.Combine(dir, f);
@@ -296,7 +295,7 @@ namespace DLCoop
             }
         }
 
-        /// <summary>Retire le chargeur, les mods et dlmods.ini du dossier du jeu. Ne touche pas à DLML.</summary>
+        /// <summary>Removes the loader, the mods and dlmods.ini from the game folder. Does not touch DLML.</summary>
         public static void Uninstall(Settings s)
         {
             string dir = GameDir(s);
@@ -318,11 +317,11 @@ namespace DLCoop
         }
 
         /// <summary>
-        /// Remet le son si audio.scr (Documents\DyingLight\out\settings, partagé par toutes les instances) contient
-        /// API("NoSound"). Ce réglage n'est jamais choisi dans le jeu : il est écrit par une instance lancée avec
-        /// /nosound (ancienne option « No sound » de DLCoop, fantômes de tools/fantome) puis relu par tous les
-        /// lancements suivants, qui n'ont alors plus de son. Valeur rendue : celle du moteur (data/settings/
-        /// defaultaudio.scr : FMOD). Renvoie vrai si le fichier a été corrigé.
+        /// Restores sound if audio.scr (Documents\DyingLight\out\settings, shared by all instances) contains
+        /// API("NoSound"). That setting is never chosen in-game: it is written by an instance started with
+        /// /nosound (the old DLCoop "No sound" option, or the tools/fantome ghosts) then re-read by every later
+        /// launch, which then has no sound. Restored value: the engine's (data/settings/defaultaudio.scr: FMOD).
+        /// Returns true if the file was fixed.
         /// </summary>
         public static bool RepairAudio()
         {
@@ -340,21 +339,21 @@ namespace DLCoop
                 File.WriteAllText(f, fixedText);
                 return true;
             }
-            catch (Exception) { return false; }  // non bloquant : au pire, pas de son
+            catch (Exception) { return false; }  // non-blocking: at worst, no sound
         }
 
         /// <summary>
-        /// Écrit dlmods.ini dans le dossier du jeu : [loader] Mods= (les deux DLL) et [env] (les réglages).
-        /// Le relais pose les variables de [env] seulement si elles ne sont pas déjà dans l'environnement du
-        /// jeu : les valeurs par instance posées par ce lanceur (ci-dessous) priment, le fichier sert de repli
-        /// pour un lancement direct (double-clic, Steam) et pour que l'utilisateur voie / modifie ses réglages.
+        /// Writes dlmods.ini into the game folder: [loader] Mods= (both DLLs) and [env] (the settings).
+        /// The loader sets the [env] variables only if they are not already in the game's environment: the
+        /// per-instance values set by this launcher (below) win; the file is a fallback for a direct launch
+        /// (double-click, Steam) and so the user can see / edit their settings.
         /// </summary>
         public static void WriteConfig(Settings s, IDictionary<string, string> env)
         {
             string dir = GameDir(s);
             var lines = new List<string>
             {
-                "; Configuration du chargeur winmm.dll (réécrite par DLCoop à chaque lancement).",
+                "; winmm.dll loader configuration (rewritten by DLCoop on each launch).",
                 "[loader]",
                 "Mods=" + NetworkDll + ";" + ModDll,
                 "",
@@ -372,7 +371,7 @@ namespace DLCoop
             return NamePrefixes[rnd.Next(NamePrefixes.Length)] + "-" + rnd.Next(100, 10000);
         }
 
-        /// <summary>Numéro d'instance déjà pris par un jeu lancé (verrou posé par dlcoop_reseau.dll).</summary>
+        /// <summary>Instance number already taken by a running game (lock set by dlcoop_reseau.dll).</summary>
         public static bool InstanceTaken(int n)
         {
             if (Mutex.TryOpenExisting(@"Local\DLFantome_slot_" + n, out Mutex m))
@@ -383,7 +382,7 @@ namespace DLCoop
             return false;
         }
 
-        /// <summary>Instances par PC et adresses d'une session : 0..32 = 32 joueurs + 1 joueur zombie.</summary>
+        /// <summary>Instances per PC and addresses of a session: 0..32 = 32 players + 1 zombie player.</summary>
         public const int MaxInstances = 33;
 
         public static int FirstFreeInstance()
@@ -395,9 +394,9 @@ namespace DLCoop
         }
 
         /// <summary>
-        /// Identité déjà utilisée par un jeu de ce PC, d'après le verrou du jeu lui-même (« Global\ChromeEngine4DIMutex »,
-        /// renommé « _fantomeN » par dlcoop_reseau.dll pour une instance supplémentaire). Avec le relais, les verrous
-        /// Local\DLFantome_slot_N désignent des adresses réseau, dont celles des joueurs distants : inutilisables ici.
+        /// Identity already used by a game on this PC, from the game's own lock ("Global\ChromeEngine4DIMutex",
+        /// renamed "_fantomeN" by dlcoop_reseau.dll for an additional instance). With the relay, the
+        /// Local\DLFantome_slot_N locks map to network addresses, including remote players': unusable here.
         /// </summary>
         public static bool IdentityTaken(int n)
         {
@@ -413,7 +412,7 @@ namespace DLCoop
             }
             catch (UnauthorizedAccessException)
             {
-                return true;  // existe, mais protégé
+                return true;  // exists, but protected
             }
         }
 
@@ -425,7 +424,7 @@ namespace DLCoop
             return -1;
         }
 
-        /// <summary>Numéro d'identité (0 = principale) que la prochaine instance utilisera.</summary>
+        /// <summary>Identity number (0 = main) that the next instance will use.</summary>
         public static int PickInstance(Settings s)
         {
             if (!s.ExtraInstance)
@@ -443,8 +442,8 @@ namespace DLCoop
         }
 
         /// <summary>
-        /// Lance le jeu ; renvoie le pid. Lève une exception avec un message lisible en cas d'échec.
-        /// <paramref name="slot"/> : adresse réseau attribuée par le relais Internet (-1 : réseau local / VPN).
+        /// Launches the game; returns the pid. Throws with a readable message on failure.
+        /// <paramref name="slot"/>: network address assigned by the Internet relay (-1: local network / VPN).
         /// </summary>
         public static int Launch(Settings s, out int instance, out string displayName, int slot = -1)
         {
@@ -452,10 +451,10 @@ namespace DLCoop
             displayName = "";
             if (string.IsNullOrEmpty(s.Game) || !File.Exists(s.Game))
                 throw new InvalidOperationException("Dying Light was not found: please select DyingLightGame.exe.");
-            // Le jeu charge lui-même le chargeur et les mods (winmm.dll dans son dossier) : on s'assure qu'ils
-            // y sont (installation automatique si besoin), plus aucune injection par ce lanceur.
-            // Un jeu déjà ouvert verrouille les DLL du dossier : on garde alors les fichiers installés (la nouvelle
-            // instance charge les mêmes que la première) ; la mise à jour se fera au prochain lancement, jeux fermés.
+            // The game loads the loader and the mods itself (winmm.dll in its folder): we make sure they are
+            // there (auto-install if needed), with no injection by this launcher.
+            // A running game locks the folder's DLLs: we then keep the installed files (the new instance loads the
+            // same ones as the first); the update happens on the next launch, with the games closed.
             if (!IsInstalled(s))
             {
                 if (!IsPresent(s) || Process.GetProcessesByName("DyingLightGame").Length == 0)
@@ -472,13 +471,13 @@ namespace DLCoop
                 ["SteamAppId"] = GameAppId,
                 ["SteamGameId"] = GameAppId,
                 ["DLF_INDEX"] = instance.ToString(),
-                // Relais : le jeu parle toujours sur son adresse 127.0.0.(slot+1), les autres joueurs sont sur
-                // les adresses voisines (occupées par Relay.cs).
+                // Relay: the game always talks on its own address 127.0.0.(slot+1); the other players are on the
+                // neighboring addresses (held by Relay.cs).
                 ["DLF_LOOPBACK"] = s.MultiInstance || slot >= 0 ? "1" : "0",
                 ["DLF_ADRESSE"] = slot >= 0 ? slot.ToString() : "",
                 ["DLF_LOG"] = Path.Combine(logs, "instance_" + instance + ".log"),
                 ["DLF_NOM"] = displayName,
-                // Places du lobby quand ce jeu héberge : joueurs choisis + 1 place pour le zombie (Be the Zombie).
+                // Lobby slots when this game hosts: chosen players + 1 slot for the zombie (Be the Zombie).
                 ["COOP6_Places"] = (Math.Max(2, Math.Min(MaxInstances - 1, s.MaxPlayers)) + 1).ToString(),
                 ["COOP6_Difficulte"] = "1",
                 ["COOP6_Couleurs"] = "1",
@@ -486,15 +485,15 @@ namespace DLCoop
                 ["COOP6_Diagnostic"] = "1",
                 ["COOP6_SansEos"] = s.DisableEos ? "1" : "0",
             };
-            // Valeurs par instance posées dans l'environnement du lanceur : le jeu lancé ci-dessous en hérite
-            // (CreateProcess, env hérité). Le relais ne les écrase pas avec dlmods.ini : elles priment donc
-            // pour cette instance (DLF_INDEX, adresse… distincts quand plusieurs jeux tournent sur ce PC).
+            // Per-instance values set in the launcher's environment: the game launched below inherits them
+            // (CreateProcess, inherited env). The loader does not overwrite them with dlmods.ini, so they win for
+            // this instance (DLF_INDEX, address... distinct when several games run on this PC).
             foreach (var kv in env)
                 Environment.SetEnvironmentVariable(kv.Key, kv.Value.Length > 0 ? kv.Value : null);
-            // dlmods.ini : les réglages écrits dans le dossier du jeu (visibles, modifiables, et utilisés pour un
-            // lancement direct, par Steam, sans le lanceur). Seulement ceux d'un lancement simple : instance
-            // principale, sans adresse de relais (l'agent du relais vit dans le lanceur) ni journal local.
-            // Sinon un lancement par Steam après une partie par le relais reprendrait une adresse 127.0.0.N morte.
+            // dlmods.ini: the settings written into the game folder (visible, editable, and used for a direct
+            // launch, via Steam, without the launcher). Only those of a plain launch: main instance, no relay
+            // address (the relay agent lives in the launcher) and no local log.
+            // Otherwise a Steam launch after a relay game would reuse a dead 127.0.0.N address.
             var fileEnv = new Dictionary<string, string>(env)
             {
                 ["DLF_INDEX"] = "0",
@@ -504,12 +503,12 @@ namespace DLCoop
             fileEnv.Remove("DLF_LOG");
             WriteConfig(s, fileEnv);
 
-            RepairAudio();  // réglage son relu au démarrage du jeu
+            RepairAudio();  // the sound setting is re-read at game startup
 
             var cmd = new StringBuilder("\"" + s.Game + "\" -nologos");
 
-            // Lancement normal (le jeu charge winmm.dll -> les mods tout seul) : plus de CREATE_SUSPENDED,
-            // VirtualAllocEx, WriteProcessMemory ni QueueUserAPC. Rien n'est écrit dans la mémoire du jeu.
+            // Normal launch (the game loads winmm.dll -> the mods by itself): no more CREATE_SUSPENDED,
+            // VirtualAllocEx, WriteProcessMemory or QueueUserAPC. Nothing is written into the game's memory.
             var si = new STARTUPINFO { cb = Marshal.SizeOf(typeof(STARTUPINFO)) };
             if (!CreateProcessW(s.Game, cmd, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero,
                                 Path.GetDirectoryName(s.Game), ref si, out PROCESS_INFORMATION pi))
@@ -519,7 +518,7 @@ namespace DLCoop
             return pi.dwProcessId;
         }
 
-        /// <summary>Attend (10 s au plus) que les deux DLL soient chargées dans le jeu.</summary>
+        /// <summary>Waits (up to 10 s) for both DLLs to be loaded in the game.</summary>
         public static bool WaitForMod(int pid)
         {
             for (int i = 0; i < 100; ++i)
@@ -536,8 +535,8 @@ namespace DLCoop
                             return true;
                     }
                 }
-                catch (ArgumentException) { return false; }      // processus terminé
-                catch (System.ComponentModel.Win32Exception) { /* modules pas encore lisibles */ }
+                catch (ArgumentException) { return false; }      // process ended
+                catch (System.ComponentModel.Win32Exception) { /* modules not readable yet */ }
                 catch (InvalidOperationException) { return false; }
                 Thread.Sleep(100);
             }
@@ -545,8 +544,8 @@ namespace DLCoop
         }
 
         // ------------------------------------------------------------------ Win32
-        // Lancement normal du jeu (le jeu charge winmm.dll -> les mods lui-même). On garde CreateProcessW pour
-        // viser précisément l'exe et le dossier de travail, mais sans aucun drapeau d'injection.
+        // Normal game launch (the game loads winmm.dll -> the mods itself). We keep CreateProcessW to target the
+        // exe and working directory precisely, but with no injection flags.
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         struct STARTUPINFO
         {
