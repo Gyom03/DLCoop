@@ -1,14 +1,15 @@
-// Agent du relais Internet (serveur : tools/relais/relais.cpp, protocole décrit dans tools/relais/README.md).
+// Internet relay agent (server: tools/relais/relais.cpp, protocol described in tools/relais/README.md).
 //
-// Même rôle que tools/fantome/src/pont.cpp, mais vers un serveur public au lieu d'un 2e PC du réseau local :
-//   - le relais attribue à chaque instance du jeu lancée ici une adresse 0..32 ; le jeu parle sur 127.0.0.(N+1)
-//     (dlcoop_reseau.dll, DLF_ADRESSE) ;
-//   - pour chaque adresse active AILLEURS dans la session, l'agent tient le verrou Local\DLFantome_slot_N (le jeu
-//     croit l'instance présente et lui envoie ses annonces) et occupe 127.0.0.(N+1):20101/20111 ; ce que le jeu y
-//     envoie part au relais, et ce qui arrive du relais est renvoyé au jeu depuis l'adresse de l'émetteur distant.
-// Le jeu ne voit que des adresses locales : aucun port à ouvrir, ni chez les joueurs ni chez l'hôte.
-// Protocole v2 : 33 adresses (32 joueurs + 1 zombie), masques de 64 bits dans la charge de ROSTER ; un relais
-// ancien (v1, 16 adresses) refuse la version 2 : l'agent se replie alors sur la v1.
+// Same role as tools/fantome/src/pont.cpp, but toward a public server instead of a 2nd PC on the local network:
+//   - the relay assigns each game instance launched here an address 0..32; the game talks on 127.0.0.(N+1)
+//     (dlcoop_reseau.dll, DLF_ADRESSE);
+//   - for each address active ELSEWHERE in the session, the agent holds the Local\DLFantome_slot_N lock (the game
+//     believes the instance is present and sends it its announcements) and holds 127.0.0.(N+1):20101/20111; what the
+//     game sends there goes to the relay, and what comes back from the relay is sent to the game from the remote
+//     sender's address.
+// The game only sees local addresses: no port to open, neither for the players nor for the host.
+// Protocol v2: 33 addresses (32 players + 1 zombie), 64-bit masks in the ROSTER payload; an old relay (v1, 16
+// addresses) refuses version 2: the agent then falls back to v1.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -20,7 +21,7 @@ using System.Threading;
 
 namespace DLCoop
 {
-    /// <summary>Un autre DLCoop de ce PC est déjà l'agent du relais.</summary>
+    /// <summary>Another DLCoop on this PC is already the relay agent.</summary>
     public sealed class RelayBusyException : InvalidOperationException
     {
         public RelayBusyException()
@@ -30,10 +31,10 @@ namespace DLCoop
     public sealed class Relay : IDisposable
     {
         public const int DefaultPort = 20300;
-        const uint Magic = 0x31524C44;  // « DLR1 »
+        const uint Magic = 0x31524C44;  // "DLR1"
         const byte VersionMax = 2;
-        const int SlotsV1 = 16, SlotsV2 = Launcher.MaxInstances;  // adresses : v1 0..15, v2 0..32
-        const int RosterV2Size = 16;  // charge de ROSTER v2 (et de KEEPALIVE v2) : masques actifs et propres, 64 bits
+        const int SlotsV1 = 16, SlotsV2 = Launcher.MaxInstances;  // addresses: v1 0..15, v2 0..32
+        const int RosterV2Size = 16;  // v2 ROSTER (and v2 KEEPALIVE) payload: active and own masks, 64 bits
         const byte NoSlot = 0xFF;
         const int GamePort = 20101, ScanPort = 20111;
         const int HeaderSize = 20;
@@ -61,21 +62,21 @@ namespace DLCoop
         readonly object gate = new object();
         readonly Dictionary<int, Remote> remotes = new Dictionary<int, Remote>();
         readonly List<Game> games = new List<Game>();
-        readonly Dictionary<byte, int> claims = new Dictionary<byte, int>();  // requête -> adresse reçue
+        readonly Dictionary<byte, int> claims = new Dictionary<byte, int>();  // request -> received address
         readonly ManualResetEvent joined = new ManualResetEvent(false);
         readonly Random rnd = new Random();
         ulong nonce, token;
-        byte version = VersionMax;  // version du protocole parlée avec ce relais
-        int refused;           // raison du refus du relais (0 = aucun)
-        ulong ownSlots;        // adresses des instances lancées ici
-        ulong activeSlots;     // adresses actives de la session (dernier ROSTER)
+        byte version = VersionMax;  // protocol version spoken with this relay
+        int refused;           // relay refusal reason (0 = none)
+        ulong ownSlots;        // addresses of the instances launched here
+        ulong activeSlots;     // active addresses of the session (last ROSTER)
         byte nextRequest;
-        long lastFromServer;   // Environment.TickCount64 n'existe pas en .NET Framework : Stopwatch
+        long lastFromServer;   // Environment.TickCount64 does not exist in .NET Framework: Stopwatch
         readonly Stopwatch clock = Stopwatch.StartNew();
         volatile bool disposed;
         long packetsUp, packetsDown;
 
-        public event Action Changed;  // état modifié (connexion, joueurs, jeux)
+        public event Action Changed;  // state changed (connection, players, games)
 
         int Slots => version >= 2 ? SlotsV2 : SlotsV1;
 
@@ -91,7 +92,7 @@ namespace DLCoop
             tunnel.ReceiveBufferSize = 1 << 20;
         }
 
-        /// <summary>Connexion au relais (bloquant, 6 s au plus). Lève une exception au message lisible.</summary>
+        /// <summary>Connects to the relay (blocking, up to 6 s). Throws with a readable message.</summary>
         public static Relay Connect(string address, string password)
         {
             if (string.IsNullOrWhiteSpace(address))
@@ -102,8 +103,8 @@ namespace DLCoop
             var agentLock = new Mutex(false, @"Local\DLCoop_relais", out bool created);
             if (!created)
             {
-                // Un seul agent par PC (il tient les adresses 127.0.0.N des joueurs distants) : l'appelant transmet
-                // alors son lancement à l'agent déjà ouvert (LaunchPipe).
+                // Only one agent per PC (it holds the remote players' 127.0.0.N addresses): the caller then forwards
+                // its launch to the already-open agent (LaunchPipe).
                 agentLock.Dispose();
                 throw new RelayBusyException();
             }
@@ -154,7 +155,7 @@ namespace DLCoop
 
         static void NoConnReset(Socket s)
         {
-            // Pas d'exception à la réception après un ICMP « port inaccessible » (instance fermée…).
+            // No exception on receive after an ICMP "port unreachable" (closed instance).
             try { s.IOControl(SioUdpConnReset, new byte[4], null); } catch (Exception) { }
         }
 
@@ -200,7 +201,7 @@ namespace DLCoop
             SendToServer(b, b.Length);
         }
 
-        // ------------------------------------------------------------------ état pour la fenêtre
+        // ------------------------------------------------------------------ state for the window
         public bool Connected => token != 0 && clock.ElapsedMilliseconds - Interlocked.Read(ref lastFromServer) < 10000;
 
         public int PlayersInSession
@@ -216,7 +217,7 @@ namespace DLCoop
         public string Describe()
         {
             if (!Connected)
-                return "Relay " + Address + ": connection lost, reconnecting…";
+                return "Relay " + Address + ": connection lost, reconnecting...";
             int players = PlayersInSession;
             return "Relay " + Address + ": connected, " + players + " game" + (players > 1 ? "s" : "") +
                    " in the session (" + GamesRunning + " on this PC).";
@@ -238,7 +239,7 @@ namespace DLCoop
             lock (gate)
             {
                 if (++nextRequest == 0)
-                    ++nextRequest;  // 0 : réservé aux reprises automatiques
+                    ++nextRequest;  // 0: reserved for automatic retries
                 req = nextRequest;
                 claims.Remove(req);
             }
@@ -263,7 +264,7 @@ namespace DLCoop
             throw new InvalidOperationException("The relay did not answer (no address for this game).");
         }
 
-        /// <summary>Suit le jeu lancé : son adresse est rendue au relais quand il se ferme.</summary>
+        /// <summary>Tracks the launched game: its address is returned to the relay when it closes.</summary>
         public void Track(int pid, int slot)
         {
             lock (gate)
@@ -275,7 +276,7 @@ namespace DLCoop
                     using (var p = Process.GetProcessById(pid))
                         p.WaitForExit();
                 }
-                catch (Exception) { /* déjà terminé */ }
+                catch (Exception) { /* already ended */ }
                 lock (gate)
                     games.RemoveAll(g => g.Pid == pid);
                 Release(slot);
@@ -291,7 +292,7 @@ namespace DLCoop
             Changed?.Invoke();
         }
 
-        /// <summary>Attend que tous les jeux suivis soient fermés.</summary>
+        /// <summary>Waits for all tracked games to be closed.</summary>
         public void WaitForGames()
         {
             while (!disposed)
@@ -303,7 +304,7 @@ namespace DLCoop
             }
         }
 
-        // ------------------------------------------------------------------ réception du relais
+        // ------------------------------------------------------------------ receiving from the relay
         void ReceiveTunnel()
         {
             var buf = new byte[65536];
@@ -382,7 +383,7 @@ namespace DLCoop
                 if (slot != NoSlot)
                 {
                     ownSlots |= 1UL << slot;
-                    DropRemote(slot);  // l'adresse est désormais celle d'un jeu lancé ici
+                    DropRemote(slot);  // the address now belongs to a game launched here
                 }
                 if (req != 0)
                 {
@@ -404,9 +405,9 @@ namespace DLCoop
                     ulong bit = 1UL << i;
                     bool mine = (ownSlots & bit) != 0, serverMine = (serverOwn & bit) != 0;
                     if (serverMine && !mine)
-                        SendHeader(T.Release, (byte)i, 0, 0);       // RELEASE perdu : on le répète
+                        SendHeader(T.Release, (byte)i, 0, 0);       // lost RELEASE: repeat it
                     else if (mine && !serverMine)
-                        SendHeader(T.Claim, (byte)i, 0, 0);         // relais redémarré : on reprend l'adresse
+                        SendHeader(T.Claim, (byte)i, 0, 0);         // relay restarted: reclaim the address
                     bool remote = (active & bit) != 0 && !mine && !serverMine;
                     if (remote)
                         EnsureRemote(i);
@@ -428,7 +429,7 @@ namespace DLCoop
                     SendHeader(T.Claim, (byte)i, 0, 0);
         }
 
-        // Paquet d'un jeu distant -> jeu local, depuis l'adresse de l'émetteur (127.0.0.(src+1):srcPort).
+        // Packet from a remote game -> local game, from the sender's address (127.0.0.(src+1):srcPort).
         void Deliver(byte[] buf, int n, byte src, byte dst, ushort srcPort, ushort dstPort)
         {
             if (src >= Slots || dst >= Slots)
@@ -443,7 +444,7 @@ namespace DLCoop
                     return;
                 if (!r.Sockets.TryGetValue(srcPort, out s))
                 {
-                    s = OpenLocal(src, srcPort);  // port source inhabituel : adresse ouverte à la demande
+                    s = OpenLocal(src, srcPort);  // unusual source port: address opened on demand
                     if (s == null)
                         return;
                     r.Sockets[srcPort] = s;
@@ -455,7 +456,7 @@ namespace DLCoop
                          new IPEndPoint(Loopback(dst), dstPort));
                 Interlocked.Increment(ref packetsDown);
             }
-            catch (Exception) { /* jeu local fermé */ }
+            catch (Exception) { /* local game closed */ }
         }
 
         static IPAddress Loopback(int slot) => new IPAddress(new byte[] { 127, 0, 0, (byte)(slot + 1) });
@@ -485,7 +486,7 @@ namespace DLCoop
             r.Lock.Dispose();
         }
 
-        // Adresse 127.0.0.(slot+1):port occupée au nom d'un jeu distant ; ce que le jeu local y envoie part au relais.
+        // Address 127.0.0.(slot+1):port held on behalf of a remote game; what the local game sends there goes to the relay.
         Socket OpenLocal(int slot, int port)
         {
             var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -496,7 +497,7 @@ namespace DLCoop
             catch (SocketException)
             {
                 s.Close();
-                return null;  // adresse déjà prise sur ce PC (pont.exe, autre lanceur…)
+                return null;  // address already taken on this PC (pont.exe, another launcher...)
             }
             NoConnReset(s);
             s.ReceiveBufferSize = 1 << 20;
@@ -525,7 +526,7 @@ namespace DLCoop
                 }
                 catch (Exception)
                 {
-                    return;  // socket fermé
+                    return;  // socket closed
                 }
                 var ep = (IPEndPoint)from;
                 byte[] a = ep.Address.GetAddressBytes();
@@ -533,7 +534,7 @@ namespace DLCoop
                     continue;
                 int src = a[3] - 1;
                 if ((ownSlots & (1UL << src)) == 0)
-                    continue;  // seuls les jeux lancés ici passent par le relais
+                    continue;  // only games launched here go through the relay
                 Header(buf, T.Data, (byte)src, (byte)dst, 0, (ushort)ep.Port, (ushort)dstPort, token);
                 SendToServer(buf, n + HeaderSize);
                 Interlocked.Increment(ref packetsUp);
@@ -550,14 +551,14 @@ namespace DLCoop
                     return;
                 if (clock.ElapsedMilliseconds - Interlocked.Read(ref lastFromServer) > 10000)
                 {
-                    // Relais redémarré ou connexion coupée : nouvelle session, les adresses sont redemandées.
+                    // Relay restarted or connection lost: a new session, the addresses are requested again.
                     Changed?.Invoke();
                     JoinBlocking(4000);
                     continue;
                 }
                 if (version >= 2)
                 {
-                    // Charge vide de la taille de la réponse ROSTER v2 : le relais ne répond jamais plus gros.
+                    // Empty payload of the v2 ROSTER reply size: the relay never replies larger.
                     var b = new byte[HeaderSize + RosterV2Size];
                     Header(b, T.Keepalive, 0, 0, 0, 0, 0, token);
                     SendToServer(b, b.Length);
@@ -589,7 +590,7 @@ namespace DLCoop
 
         void SendToServer(byte[] b, int n)
         {
-            try { tunnel.SendTo(b, 0, n, SocketFlags.None, server); } catch (Exception) { /* réseau absent */ }
+            try { tunnel.SendTo(b, 0, n, SocketFlags.None, server); } catch (Exception) { /* network down */ }
         }
 
         public void Dispose()
