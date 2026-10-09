@@ -1,0 +1,18 @@
+; Configuration du relais winmm.dll (chargeur de mods de Dying Light 1.55).
+; À placer dans le dossier du jeu, à côté de winmm.dll et winmm_real.dll.
+
+[loader]
+; DLL de mods chargées au démarrage du jeu, dans l'ordre, séparées par « ; ».
+; Chemins relatifs au dossier du jeu, ou absolus (« X:\... »). Défaut si absent : dlcoop_reseau.dll;coop6.dll
+Mods=dlcoop_reseau.dll;coop6.dll
+
+[env]
+; Réglages posés comme variables d'environnement du processus du jeu AVANT le chargement des mods.
+; Les mods les lisent en priorité (coop6.dll : COOP6_*, dlcoop_reseau.dll : DLF_*), sinon leur propre .ini.
+; Le lanceur réécrit cette section à chaque lancement. Exemples :
+COOP6_Places=7
+COOP6_Difficulte=1
+COOP6_Couleurs=1
+COOP6_Hud=1
+; DLF_INDEX=0 = instance principale (identité Steam réelle). Laisser 0 pour un lancement simple.
+DLF_INDEX=0

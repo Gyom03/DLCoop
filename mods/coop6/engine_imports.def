@@ -1,0 +1,14 @@
+; Exports d'engine_x64_rwdi.dll (Dying Light 1.55) utilisés par coop6.dll -> engine_imports.lib (build.ps1).
+; Noms décorés relevés dans la table d'exports de engine_x64_rwdi.dll (1.55).
+LIBRARY engine_x64_rwdi.dll
+EXPORTS
+    ?Clone@IUIElement@@QEAAPEAV1@PEAV1@@Z
+    ?GetParent@IUIElement@@QEAAPEAV1@XZ
+    ?GetRelativePos@IUIElement@@QEBA?AVvec3@@XZ
+    ?SetRelativePos@IUIElement@@QEAAXAEBVvec3@@@Z
+    ?GetLevel@IGSObject@@QEBAPEAVILevel@@XZ
+    ?GetNetOwnerID@IGSObject@@QEBAHXZ
+    ?GetChildrenCount@IUIElement@@QEAAHXZ
+    ?GetChildren@IUIElement@@QEAAPEAV1@H@Z
+    ?GetUnscaledPivot@IUIElement@@QEBA?AVvec3@@XZ
+    ?SetUnscaledPivot@IUIElement@@QEAAXAEBVvec3@@@Z

@@ -1,0 +1,113 @@
+<Window x:Class="DLCoop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DLCoop — Dying Light 1.55" Width="440" SizeToContent="Height" ResizeMode="CanMinimize"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource Fond}" FontSize="13"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <!-- Texte clair pour les libellés de la fenêtre seulement (pas dans les boutons ni les listes). -->
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Texte}"/>
+        </Style>
+        <Style x:Key="Titre" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+        </Style>
+        <Style x:Key="Libelle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Pale}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,4,8,0"/>
+        </Style>
+    </Window.Resources>
+    <!-- Simple : emplacement du jeu, serveur, mot de passe ; le reste dans des menus dépliants fermés. -->
+    <StackPanel Margin="12">
+
+        <!-- Jeu -->
+        <Border Style="{StaticResource Section}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Titre}" Text="Game location"/>
+                <DockPanel Margin="0,4,0,0">
+                    <Button DockPanel.Dock="Right" Content="Change…" Margin="6,0,0,0" Click="Browse"/>
+                    <TextBox x:Name="GamePath" IsReadOnly="True"/>
+                </DockPanel>
+                <TextBlock x:Name="GameState" Margin="0,4,0,0" FontSize="12"/>
+                <DockPanel Margin="0,6,0,0">
+                    <Button x:Name="InstallButton" DockPanel.Dock="Left" Content="Install mod" Margin="0,0,6,0"
+                            Click="InstallMod"
+                            ToolTip="Copies the loader (winmm.dll) and the mod into the game folder"/>
+                    <Button x:Name="UninstallButton" DockPanel.Dock="Left" Content="Uninstall mod" Click="UninstallMod"
+                            ToolTip="Removes the loader and the mod from the game folder"/>
+                    <TextBlock x:Name="InstallState" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="12"
+                               TextAlignment="Right"/>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Serveur : renseigné = relais Internet ; vide = réseau local (ou VPN). -->
+        <Border Style="{StaticResource Section}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Style="{StaticResource Libelle}" Text="Server IP" Margin="0,0,8,0"/>
+                <TextBox Grid.Row="0" Grid.Column="1" x:Name="ServerAddress"
+                         ToolTip="Relay server address, for example 203.0.113.10 — leave empty to play on a local network"/>
+                <TextBlock Grid.Row="1" Style="{StaticResource Libelle}" Text="Session password"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="SessionPassword" Margin="0,4,0,0" MaxLength="64"
+                         ToolTip="The same for every player of the group"/>
+                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" x:Name="RelayState" Margin="0,6,0,0" FontSize="12"
+                           TextWrapping="Wrap" Foreground="{StaticResource Pale}" Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+
+        <!-- Options secondaires -->
+        <Expander Header="Player name">
+            <StackPanel>
+                <CheckBox x:Name="HideName" Content="Hide my Steam name" Checked="UpdateState" Unchecked="UpdateState"/>
+                <DockPanel Margin="0,4,0,0">
+                    <Button x:Name="RandomButton" DockPanel.Dock="Right" Content="Random" Margin="6,0,0,0"
+                            Click="RandomName"/>
+                    <TextBox x:Name="DisplayName" MaxLength="31"/>
+                </DockPanel>
+            </StackPanel>
+        </Expander>
+
+        <Expander Header="Instance">
+            <StackPanel>
+                <RadioButton x:Name="MainInstance" GroupName="Instance" Content="Main instance (my game, my Steam account)"
+                             Checked="UpdateState"/>
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="ExtraInstance" GroupName="Instance" VerticalAlignment="Center"
+                                 Content="Additional instance #" Checked="UpdateState"/>
+                    <ComboBox x:Name="InstanceNumber" Width="70" Margin="6,4,0,0"/>
+                </StackPanel>
+                <CheckBox x:Name="MultiInstance" Content="Several instances on this PC (local network only)"/>
+            </StackPanel>
+        </Expander>
+
+        <Expander Header="More options">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                            ToolTip="When you host: players allowed in your game. The Night Hunter (Be the Zombie) is not counted.">
+                    <TextBlock Text="Max players when I host" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="MaxPlayers" Width="70"/>
+                </StackPanel>
+                <CheckBox x:Name="DisableEos" Content="Disable the EOS connection (recommended)"/>
+                <CheckBox x:Name="CloseAfterLaunch" Content="Close after launch"/>
+            </StackPanel>
+        </Expander>
+
+        <!-- Lancement -->
+        <Button x:Name="LaunchButton" Content="Launch" FontSize="14" Padding="22,6" Margin="0,6,0,0"
+                Style="{StaticResource BoutonPrincipal}" Click="Launch" IsDefault="True"/>
+        <TextBlock x:Name="Status" Margin="0,8,0,0" TextWrapping="Wrap" FontSize="12" TextAlignment="Center"
+                   Foreground="{StaticResource Pale}" Visibility="Collapsed"/>
+    </StackPanel>
+</Window>

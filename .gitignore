@@ -1,0 +1,21 @@
+# Sorties de compilation
+out/
+obj/
+bin/
+
+# Généré par gen_def.py (chargeur winmm)
+tools/dlloader/winmm_exports.h
+
+# Fichiers compilés
+*.dll
+*.exe
+*.lib
+*.exp
+*.obj
+*.res
+*.pdb
+*.zip
+
+# Réglages Visual Studio
+*.user
+.vs/

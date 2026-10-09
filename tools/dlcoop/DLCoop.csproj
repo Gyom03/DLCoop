@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Lanceur DLCoop : fenêtre WPF sur le .NET Framework 4.7.2, composant de Windows (inclus d'office depuis
+       Windows 10 1803 et dans Windows 11) : aucune dépendance à installer, exe de quelques dizaines de Ko.
+       64 bits, comme le jeu. <Version> est aussi celle des trois DLL du paquet (build.ps1 la reporte dans leurs
+       informations de version). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>DLCoop</AssemblyName>
+    <RootNamespace>DLCoop</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>none</DebugType>
+    <Version>1.3.5</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Product>DLCoop</Product>
+    <Company>DLCoop</Company>
+    <Description>DLCoop launcher - co-op mod for Dying Light 1.55</Description>
+    <AssemblyTitle>DLCoop launcher - co-op mod for Dying Light 1.55</AssemblyTitle>
+    <Copyright>Personal mod for Dying Light 1.55. Not affiliated with Techland.</Copyright>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,16 @@
+; Réglages de fantome.exe (copié en fantome.ini à côté de l'exe par build.ps1 s'il n'existe pas)
+[fantome]
+; Exécutable du jeu (lancé tel quel, jamais modifié)
+Jeu=C:\Program Files (x86)\Steam\steamapps\common\Dying Light\DyingLightGame.exe
+; 1 = chaque instance prend l'adresse 127.0.0.(numéro+1) sur les ports du jeu
+;     (lancer aussi l'hôte avec « fantome.exe hote »)
+Bouclage=1
+; 0 = fantômes sans son (/nosound)
+SonFantomes=0
+; Arguments ajoutés pour toutes les instances (-nologos est toujours ajouté)
+Arguments=
+; Arguments ajoutés pour les fantômes seulement (moins de mémoire pour les textures)
+ArgumentsFantomes=-texStreamMemMB 512
+; DLL de mods chargées au démarrage, après fantome.dll (séparées par « ; », relatives à fantome.exe)
+; ex. : Mods=..\mods\coop6\coop6.dll
+Mods=

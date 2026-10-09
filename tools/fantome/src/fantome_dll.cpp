@@ -1,0 +1,576 @@
+// fantome.dll — chargée par fantome.exe dans une instance de Dying Light 1.55 avant son point d'entrée.
+// Permet de lancer plusieurs instances du jeu sur un même PC pour tester la coop en LAN.
+//
+// Réglages lus dans l'environnement (posés par fantome.exe) :
+//   DLF_INDEX     0 = hôte, 1..7 = fantômes
+//   DLF_LOOPBACK  1 = chaque instance utilise sa propre adresse 127.0.0.(INDEX+1) sur les ports du jeu
+//   DLF_LOG       fichier journal
+//   DLF_NOM       pseudo présenté au jeu à la place du pseudo Steam (toutes instances ; lanceur DLCoop)
+//   DLF_ADRESSE   adresse réseau 0..15 (127.0.0.(ADRESSE+1)) si elle diffère de DLF_INDEX : relais Internet du
+//                 lanceur DLCoop, où l'adresse est attribuée par le relais et l'identité (INDEX) reste locale
+//
+// Ce que fait la DLL (uniquement dans le processus du jeu, jamais dans la mémoire de Steam) :
+//   1. fantômes : renomme le verrou « Global\ChromeEngine4DIMutex » (sinon « Dying Light is already running ») ;
+//   2. fantômes : donne au jeu des intermédiaires de SteamUser / SteamFriends / SteamRemoteStorage qui
+//      transmettent tout à Steam, sauf : SteamID modifié, pseudo « Fantome N », écritures cloud ignorées ;
+//   3. tous : correctif LAN de la 1.55 (paquets envoyés vers le port 0 → 20101, cf. Gyom03/DL-LAN-join-fix) ;
+//   4. bouclage : sockets du jeu (20101…, 20111…) liées à 127.0.0.(INDEX+1), diffusion LAN remplacée par un
+//      envoi direct à chaque adresse 127.0.0.1…8.
+// Tout passe par les tables d'imports (IAT) des modules du jeu : aucun octet de code n'est réécrit.
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+
+#include <cstdarg>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+namespace {
+
+constexpr int kMaxInstances = 33;  // 0..32 : 32 joueurs + 1 zombie (relais, ou deux PC reliés par pont.exe)
+constexpr uint16_t kGamePort = 20101;       // jeu en LAN (CLobbyConnectionsEos::GetLocalPort, type 1)
+constexpr uint16_t kScanPort = 20111;       // découverte LAN (type 2)
+constexpr uint16_t kPortRange = 20;         // le moteur essaie port, port + 1… si le port est pris
+constexpr const char* kGameMutex = "Global\\ChromeEngine4DIMutex";
+
+int g_index = 0;   // identité : 0 = compte Steam réel, N = instance supplémentaire (SteamID dérivé)
+int g_slot = 0;    // adresse réseau 127.0.0.(g_slot+1) et verrou Local\DLFantome_slot_N (= g_index par défaut)
+bool g_loopback = false;
+char g_name[64] = "Fantome";  // pseudo présenté au jeu (UTF-8)
+bool g_nameOverride = false;   // DLF_NOM posé : pseudo remplacé même pour l'instance principale
+
+// ---------------------------------------------------------------- journal
+CRITICAL_SECTION g_logLock;
+HANDLE g_log = INVALID_HANDLE_VALUE;
+
+void Log(const char* fmt, ...)
+{
+    if (g_log == INVALID_HANDLE_VALUE)
+        return;
+    char buf[1024];
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    int n = snprintf(buf, sizeof(buf), "%02d:%02d:%02d.%03d [%d] ", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds,
+                     g_index);
+    va_list ap;
+    va_start(ap, fmt);
+    n += vsnprintf(buf + n, sizeof(buf) - n - 2, fmt, ap);
+    va_end(ap);
+    if (n > (int)sizeof(buf) - 2)
+        n = (int)sizeof(buf) - 2;
+    buf[n++] = '\r';
+    buf[n++] = '\n';
+    EnterCriticalSection(&g_logLock);
+    DWORD w;
+    WriteFile(g_log, buf, n, &w, nullptr);
+    LeaveCriticalSection(&g_logLock);
+}
+
+int EnvInt(const char* name, int def)
+{
+    char v[32];
+    DWORD n = GetEnvironmentVariableA(name, v, sizeof(v));
+    return (n && n < sizeof(v)) ? atoi(v) : def;
+}
+
+// ---------------------------------------------------------------- IAT
+// Remplace dans la table d'imports de `mod` toute entrée qui vaut `real` par `hook`. Comparer les adresses
+// (et non les noms) couvre aussi les imports par numéro d'ordre (fréquents pour WS2_32).
+int PatchIat(HMODULE mod, void* real, void* hook)
+{
+    if (!mod || !real)
+        return 0;
+    auto* base = reinterpret_cast<uint8_t*>(mod);
+    auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
+    const auto& dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir.VirtualAddress)
+        return 0;
+    int count = 0;
+    for (auto* imp = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + dir.VirtualAddress); imp->Name; ++imp) {
+        for (auto* th = reinterpret_cast<IMAGE_THUNK_DATA64*>(base + imp->FirstThunk); th->u1.Function; ++th) {
+            if (reinterpret_cast<void*>(th->u1.Function) != real)
+                continue;
+            DWORD old;
+            VirtualProtect(&th->u1.Function, sizeof(void*), PAGE_READWRITE, &old);
+            th->u1.Function = reinterpret_cast<ULONGLONG>(hook);
+            VirtualProtect(&th->u1.Function, sizeof(void*), old, &old);
+            ++count;
+        }
+    }
+    return count;
+}
+
+const wchar_t* const kGameModules[] = {nullptr, L"engine_x64_rwdi.dll", L"gamedll_x64_rwdi.dll",
+                                       L"filesystem_x64_rwdi.dll"};
+
+int PatchGame(const char* what, void* real, void* hook)
+{
+    int total = 0;
+    for (const wchar_t* m : kGameModules) {
+        int n = PatchIat(GetModuleHandleW(m), real, hook);
+        total += n;
+    }
+    Log("IAT %-40s : %d entrée(s) remplacée(s)", what, total);
+    return total;
+}
+
+// ---------------------------------------------------------------- 1. verrou d'instance unique
+using CreateMutexA_t = HANDLE(WINAPI*)(LPSECURITY_ATTRIBUTES, BOOL, LPCSTR);
+CreateMutexA_t g_CreateMutexA;
+
+HANDLE WINAPI HookCreateMutexA(LPSECURITY_ATTRIBUTES sa, BOOL owner, LPCSTR name)
+{
+    if (name && g_index > 0 && _stricmp(name, kGameMutex) == 0) {
+        char renamed[96];
+        snprintf(renamed, sizeof(renamed), "%s_fantome%d", kGameMutex, g_index);
+        Log("verrou du jeu renommé : %s", renamed);
+        return g_CreateMutexA(sa, owner, renamed);
+    }
+    return g_CreateMutexA(sa, owner, name);
+}
+
+// ---------------------------------------------------------------- 2. intermédiaires Steam
+// Un intermédiaire a la forme d'une interface Steam : sa vftable pointe vers des « relais » qui remplacent
+// `this` par le vrai objet Steam puis sautent à la même place de la vraie vftable. Seules quelques places
+// sont redirigées vers nos fonctions. La mémoire de steamclient64.dll n'est jamais modifiée.
+constexpr int kSlots = 256;
+
+struct SteamProxy {
+    void** vtbl;
+    void* real;
+};
+
+uint8_t* g_relays;  // kSlots relais de 16 octets
+
+void BuildRelays()
+{
+    g_relays = static_cast<uint8_t*>(VirtualAlloc(nullptr, kSlots * 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    for (int i = 0; i < kSlots; ++i) {
+        uint8_t* p = g_relays + i * 16;
+        const uint8_t code[] = {
+            0x48, 0x8B, 0x49, 0x08,              // mov rcx, [rcx+8]   ; vrai objet
+            0x48, 0x8B, 0x01,                    // mov rax, [rcx]     ; vraie vftable
+            0xFF, 0xA0, 0, 0, 0, 0,              // jmp [rax+i*8]
+            0xCC, 0xCC, 0xCC};
+        memcpy(p, code, sizeof(code));
+        int32_t disp = i * 8;
+        memcpy(p + 9, &disp, 4);
+    }
+    DWORD old;
+    VirtualProtect(g_relays, kSlots * 16, PAGE_EXECUTE_READ, &old);
+    FlushInstructionCache(GetCurrentProcess(), g_relays, kSlots * 16);
+}
+
+template <class F>
+F RealSlot(void* self, int slot)
+{
+    void* real = static_cast<SteamProxy*>(self)->real;
+    return reinterpret_cast<F>((*static_cast<void***>(real))[slot]);
+}
+void* RealObj(void* self) { return static_cast<SteamProxy*>(self)->real; }
+
+// ISteamUser::GetSteamID (place 2) : CSteamID renvoyé par pointeur caché (vérifié dans
+// SteamAPI_ISteamUser_GetSteamID de steam_api64 : lea rdx,[rsp+..] ; call [rax+0x10]).
+uint64_t* __fastcall User_GetSteamID(void* self, uint64_t* out)
+{
+    RealSlot<uint64_t* (*)(void*, uint64_t*)>(self, 2)(RealObj(self), out);
+    const uint64_t before = *out;
+    // Le numéro de compte (32 bits bas) est décalé ; univers, type et instance restent valides.
+    const uint32_t account = static_cast<uint32_t>(before) ^ (0x5A000000u | static_cast<uint32_t>(g_index));
+    *out = (before & 0xFFFFFFFF00000000ull) | account;
+    static bool once;
+    if (!once) {
+        once = true;
+        Log("SteamID présenté au jeu : %llu (vrai : %llu)", *out, before);
+    }
+    return out;
+}
+
+// ISteamFriends::GetPersonaName (place 0).
+const char* __fastcall Friends_GetPersonaName(void*) { return g_name; }
+
+// ISteamRemoteStorage : FileWrite (0), FileForget (5), FileDelete (6) ignorées pour un fantôme.
+bool __fastcall Storage_FileWrite(void*, const char* file, const void*, int32_t size)
+{
+    Log("cloud : écriture ignorée %s (%d octets)", file ? file : "?", size);
+    return true;
+}
+bool __fastcall Storage_FileForget(void*, const char* file)
+{
+    Log("cloud : FileForget ignoré %s", file ? file : "?");
+    return true;
+}
+bool __fastcall Storage_FileDelete(void*, const char* file)
+{
+    Log("cloud : suppression ignorée %s", file ? file : "?");
+    return true;
+}
+
+struct ProxyEntry {
+    void* real;
+    SteamProxy* proxy;
+};
+std::vector<ProxyEntry> g_proxies;
+CRITICAL_SECTION g_proxyLock;
+
+SteamProxy* MakeProxy(void* real, const char* version)
+{
+    for (auto& e : g_proxies)
+        if (e.real == real)
+            return e.proxy;
+    auto** vt = new void*[kSlots];
+    for (int i = 0; i < kSlots; ++i)
+        vt[i] = g_relays + i * 16;
+    if (strncmp(version, "SteamUser0", 10) == 0) {
+        vt[2] = reinterpret_cast<void*>(&User_GetSteamID);
+    } else if (strncmp(version, "SteamFriends0", 13) == 0) {
+        vt[0] = reinterpret_cast<void*>(&Friends_GetPersonaName);
+    } else if (strncmp(version, "STEAMREMOTESTORAGE_INTERFACE_VERSION", 36) == 0) {
+        vt[0] = reinterpret_cast<void*>(&Storage_FileWrite);
+        vt[5] = reinterpret_cast<void*>(&Storage_FileForget);
+        vt[6] = reinterpret_cast<void*>(&Storage_FileDelete);
+    }
+    auto* p = new SteamProxy{vt, real};
+    g_proxies.push_back({real, p});
+    Log("intermédiaire Steam créé pour %s", version);
+    return p;
+}
+
+using FindOrCreate_t = void*(__cdecl*)(int32_t, const char*);
+FindOrCreate_t g_FindOrCreate;
+
+void* __cdecl HookFindOrCreateUserInterface(int32_t user, const char* version)
+{
+    void* real = g_FindOrCreate(user, version);
+    if (!real || !version)
+        return real;
+    // Instance principale avec pseudo remplacé : seul SteamFriends passe par un intermédiaire (vrai SteamID,
+    // vraies sauvegardes cloud). Instance supplémentaire : les trois.
+    const bool friends = strncmp(version, "SteamFriends0", 13) == 0;
+    const bool other = strncmp(version, "SteamUser0", 10) == 0 ||
+                       strncmp(version, "STEAMREMOTESTORAGE_INTERFACE_VERSION", 36) == 0;
+    if (!(friends && (g_index > 0 || g_nameOverride)) && !(other && g_index > 0))
+        return real;
+    EnterCriticalSection(&g_proxyLock);
+    SteamProxy* p = MakeProxy(real, version);
+    LeaveCriticalSection(&g_proxyLock);
+    return p;
+}
+
+// ---------------------------------------------------------------- 3 et 4. réseau
+using bind_t = int(WSAAPI*)(SOCKET, const sockaddr*, int);
+using sendto_t = int(WSAAPI*)(SOCKET, const char*, int, int, const sockaddr*, int);
+using WSASendTo_t = int(WSAAPI*)(SOCKET, LPWSABUF, DWORD, LPDWORD, DWORD, const sockaddr*, int, LPWSAOVERLAPPED,
+                                 LPWSAOVERLAPPED_COMPLETION_ROUTINE);
+bind_t g_bind;
+sendto_t g_sendto;
+WSASendTo_t g_WSASendTo;
+
+uint32_t LoopbackAddr(int index) { return htonl(0x7F000001u + static_cast<uint32_t>(index)); }  // 127.0.0.(i+1)
+
+bool IsGamePort(uint16_t hostPort)
+{
+    return (hostPort >= kGamePort && hostPort < kGamePort + kPortRange) ||
+           (hostPort >= kScanPort && hostPort < kScanPort + kPortRange);
+}
+
+bool IsBroadcast(uint32_t netAddr)
+{
+    const uint32_t a = ntohl(netAddr);
+    return a == 0xFFFFFFFFu || (a & 0xFFu) == 0xFFu;
+}
+
+void FmtAddr(const sockaddr_in& a, char* out, size_t n)
+{
+    const uint8_t* b = reinterpret_cast<const uint8_t*>(&a.sin_addr);
+    snprintf(out, n, "%u.%u.%u.%u:%u", b[0], b[1], b[2], b[3], ntohs(a.sin_port));
+}
+
+// Journalise chaque destination différente une seule fois (diagnostic des premiers essais).
+void LogDest(const char* fn, const sockaddr_in& a, const char* note)
+{
+    static uint64_t seen[64];
+    static int nseen;
+    const uint64_t key = (static_cast<uint64_t>(a.sin_addr.s_addr) << 16) | a.sin_port;
+    for (int i = 0; i < nseen; ++i)
+        if (seen[i] == key)
+            return;
+    if (nseen < 64)
+        seen[nseen++] = key;
+    char s[32];
+    FmtAddr(a, s, sizeof(s));
+    Log("%s → %s %s", fn, s, note);
+}
+
+using WSAIoctl_t = int(WSAAPI*)(SOCKET, DWORD, LPVOID, DWORD, LPVOID, DWORD, LPDWORD, LPWSAOVERLAPPED,
+                                LPWSAOVERLAPPED_COMPLETION_ROUTINE);
+WSAIoctl_t g_WSAIoctl;
+
+// Une instance est vivante si sa DLL tient le verrou « Local\DLFantome_slot_N ».
+bool InstanceAlive(int index)
+{
+    wchar_t name[64];
+    swprintf(name, 64, L"Local\\DLFantome_slot_%d", index);
+    HANDLE h = OpenMutexW(SYNCHRONIZE, FALSE, name);
+    if (h)
+        CloseHandle(h);
+    return h != nullptr;
+}
+
+int WSAAPI HookBind(SOCKET s, const sockaddr* name, int len)
+{
+    if (name && name->sa_family == AF_INET && len >= (int)sizeof(sockaddr_in)) {
+        sockaddr_in a = *reinterpret_cast<const sockaddr_in*>(name);
+        const uint16_t port = ntohs(a.sin_port);
+        if (g_loopback && IsGamePort(port)) {
+            a.sin_addr.s_addr = LoopbackAddr(g_slot);
+            // Un envoi vers une adresse 127.0.0.N sans instance renvoie « port inaccessible » ; Windows le
+            // signale alors au recvfrom suivant (WSAECONNRESET), ce qu'une vraie diffusion LAN ne fait jamais.
+            BOOL off = FALSE;
+            DWORD ret = 0;
+            if (g_WSAIoctl)
+                g_WSAIoctl(s, _WSAIOW(IOC_VENDOR, 12) /* SIO_UDP_CONNRESET */, &off, sizeof(off), nullptr, 0, &ret,
+                           nullptr, nullptr);
+        }
+        int r = g_bind(s, reinterpret_cast<sockaddr*>(&a), sizeof(a));
+        if (IsGamePort(port)) {
+            char t[32];
+            FmtAddr(a, t, sizeof(t));
+            Log("bind %s → %s", t, r == 0 ? "ok" : "ÉCHEC");
+        }
+        return r;
+    }
+    return g_bind(s, name, len);
+}
+
+// Forme d'adresse sous laquelle le moteur connaît chaque pair. Défaut de la 1.55 : `CInetAddr(SGameAddressEos
+// const&)` construit une adresse sans port, et le moteur mémorise alors certains pairs sous « IP:0 ». Leurs
+// réponses, qui arrivent de « IP:20101 », ne seraient pas reconnues (Net::CLocalClient::FindSender) et seraient
+// jetées : on leur remet le port 0 à la réception. Mais d'une session à l'autre, le même pair peut être connu
+// sous sa vraie adresse (transmise par un autre joueur) : on suit donc la **dernière** forme utilisée par le jeu
+// pour l'envoi, pair par pair, au lieu d'une décision définitive.
+constexpr int kMaxPeers = 64;
+struct PeerForm {
+    uint32_t addr;  // IPv4, ordre réseau
+    bool zero;      // le jeu adresse ce pair avec le port 0
+};
+PeerForm g_peers[kMaxPeers];
+int g_peerCount;
+SRWLOCK g_peerLock = SRWLOCK_INIT;
+
+void NotePeerForm(uint32_t addr, bool zero)
+{
+    AcquireSRWLockExclusive(&g_peerLock);
+    int i = 0;
+    while (i < g_peerCount && g_peers[i].addr != addr)
+        ++i;
+    const bool known = i < g_peerCount;
+    const bool changed = !known || g_peers[i].zero != zero;
+    if (!known && g_peerCount < kMaxPeers)
+        g_peers[g_peerCount++] = {addr, zero};
+    else if (known)
+        g_peers[i].zero = zero;
+    ReleaseSRWLockExclusive(&g_peerLock);
+    if (changed) {
+        const uint8_t* b = reinterpret_cast<const uint8_t*>(&addr);
+        Log("pair %u.%u.%u.%u adressé %s", b[0], b[1], b[2], b[3],
+            zero ? "avec le port 0 (réponses présentées avec le port 0)" : "avec son vrai port 20101");
+    }
+}
+
+bool IsZeroPortPeer(uint32_t addr)
+{
+    AcquireSRWLockShared(&g_peerLock);
+    bool zero = false;
+    for (int i = 0; i < g_peerCount; ++i)
+        if (g_peers[i].addr == addr) {
+            zero = g_peers[i].zero;
+            break;
+        }
+    ReleaseSRWLockShared(&g_peerLock);
+    return zero;
+}
+
+// Prépare l'adresse de destination ; renvoie le nombre de destinations écrites dans `out`.
+int Destinations(const sockaddr* to, int tolen, sockaddr_in* out, const char* fn)
+{
+    if (!to || to->sa_family != AF_INET || tolen < (int)sizeof(sockaddr_in))
+        return 0;
+    sockaddr_in a = *reinterpret_cast<const sockaddr_in*>(to);
+    const char* note = "";
+    if (a.sin_port == 0) {  // défaut de la 1.55 : le port de jeu n'est jamais transmis par la découverte
+        a.sin_port = htons(kGamePort);
+        note = "(port 0 corrigé en 20101)";
+        if (!IsBroadcast(a.sin_addr.s_addr))
+            NotePeerForm(a.sin_addr.s_addr, true);
+    } else if (a.sin_port == htons(kGamePort) && !IsBroadcast(a.sin_addr.s_addr)) {
+        NotePeerForm(a.sin_addr.s_addr, false);
+    }
+    if (g_loopback && IsBroadcast(a.sin_addr.s_addr) && IsGamePort(ntohs(a.sin_port))) {
+        int n = 0;
+        for (int i = 0; i < kMaxInstances; ++i) {
+            if (i == g_slot || !InstanceAlive(i))
+                continue;
+            out[n] = a;
+            out[n].sin_addr.s_addr = LoopbackAddr(i);
+            ++n;
+        }
+        LogDest(fn, a, "(diffusion remplacée par un envoi à chaque instance lancée)");
+        return n > 0 ? n : -1;  // -1 : aucune autre instance, rien à envoyer
+    }
+    out[0] = a;
+    LogDest(fn, a, note);
+    return 1;
+}
+
+int WSAAPI HookSendTo(SOCKET s, const char* buf, int len, int flags, const sockaddr* to, int tolen)
+{
+    sockaddr_in dst[kMaxInstances];
+    int n = Destinations(to, tolen, dst, "sendto");
+    if (n == 0)
+        return g_sendto(s, buf, len, flags, to, tolen);
+    if (n < 0)
+        return len;  // diffusion sans destinataire : réussie, comme sur un réseau vide
+    int r = SOCKET_ERROR;
+    for (int i = 0; i < n; ++i) {
+        int ri = g_sendto(s, buf, len, flags, reinterpret_cast<sockaddr*>(&dst[i]), sizeof(sockaddr_in));
+        if (ri != SOCKET_ERROR)
+            r = ri;
+    }
+    return n > 1 ? len : r;  // diffusion : réussie dès qu'un envoi passe, comme une vraie diffusion
+}
+
+int WSAAPI HookWSASendTo(SOCKET s, LPWSABUF bufs, DWORD nbufs, LPDWORD sent, DWORD flags, const sockaddr* to,
+                         int tolen, LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE cb)
+{
+    sockaddr_in dst[kMaxInstances];
+    int n = Destinations(to, tolen, dst, "WSASendTo");
+    if (n <= 0)  // rien à réécrire, ou diffusion sans destinataire : envoi d'origine (termine aussi l'OVERLAPPED)
+        return g_WSASendTo(s, bufs, nbufs, sent, flags, to, tolen, ov, cb);
+    if (n > 1) {
+        // Destinations supplémentaires en envoi simple (un OVERLAPPED ne peut servir qu'une fois).
+        std::vector<char> flat;
+        for (DWORD i = 0; i < nbufs; ++i)
+            flat.insert(flat.end(), bufs[i].buf, bufs[i].buf + bufs[i].len);
+        for (int i = 1; i < n; ++i)
+            g_sendto(s, flat.data(), static_cast<int>(flat.size()), 0, reinterpret_cast<sockaddr*>(&dst[i]),
+                     sizeof(sockaddr_in));
+    }
+    return g_WSASendTo(s, bufs, nbufs, sent, flags, reinterpret_cast<sockaddr*>(&dst[0]), sizeof(sockaddr_in), ov,
+                       cb);
+}
+
+using recvfrom_t = int(WSAAPI*)(SOCKET, char*, int, int, sockaddr*, int*);
+recvfrom_t g_recvfrom;
+
+int WSAAPI HookRecvFrom(SOCKET s, char* buf, int len, int flags, sockaddr* from, int* fromlen)
+{
+    const int r = g_recvfrom(s, buf, len, flags, from, fromlen);
+    // Seulement si un paquet a réellement été reçu (r > 0) : le moteur interroge le socket en boucle.
+    if (r > 0 && from && fromlen && *fromlen >= (int)sizeof(sockaddr_in) && from->sa_family == AF_INET) {
+        auto* a = reinterpret_cast<sockaddr_in*>(from);
+        if (a->sin_port == htons(kGamePort) && IsZeroPortPeer(a->sin_addr.s_addr)) {
+            a->sin_port = 0;
+            static uint32_t logged[8];
+            static int nlogged;
+            bool seen = false;
+            for (int i = 0; i < nlogged; ++i)
+                seen |= logged[i] == a->sin_addr.s_addr;
+            if (!seen && nlogged < 8) {
+                logged[nlogged++] = a->sin_addr.s_addr;
+                const uint8_t* b = reinterpret_cast<const uint8_t*>(&a->sin_addr);
+                Log("recvfrom ← %u.%u.%u.%u:20101 présenté comme port 0", b[0], b[1], b[2], b[3]);
+            }
+        }
+    }
+    return r;
+}
+
+// ---------------------------------------------------------------- installation
+void Install()
+{
+    InitializeCriticalSection(&g_logLock);
+    InitializeCriticalSection(&g_proxyLock);
+    g_index = EnvInt("DLF_INDEX", 0);
+    g_loopback = EnvInt("DLF_LOOPBACK", 0) != 0;
+    if (g_index < 0 || g_index >= kMaxInstances)
+        g_index = 0;
+    g_slot = EnvInt("DLF_ADRESSE", g_index);
+    if (g_slot < 0 || g_slot >= kMaxInstances)
+        g_slot = g_index;
+    snprintf(g_name, sizeof(g_name), "Fantome %d", g_index);
+    wchar_t nom[32];
+    if (GetEnvironmentVariableW(L"DLF_NOM", nom, 32) > 0 && nom[0]) {  // pseudo choisi (lanceur DLCoop)
+        WideCharToMultiByte(CP_UTF8, 0, nom, -1, g_name, sizeof(g_name), nullptr, nullptr);
+        g_nameOverride = true;
+    }
+
+    char path[MAX_PATH];
+    if (GetEnvironmentVariableA("DLF_LOG", path, sizeof(path)))
+        g_log = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                            nullptr);
+    Log("---- fantome.dll chargée (pid %lu, instance %d, %s, bouclage %s, adresse 127.0.0.%d)", GetCurrentProcessId(),
+        g_index, g_index ? "fantôme" : "hôte", g_loopback ? "oui" : "non", g_slot + 1);
+
+    // Verrou unique de l'exe (aussi l'adresse de KernelBase au cas où l'import serait déjà résolu jusque-là).
+    HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
+    g_CreateMutexA = reinterpret_cast<CreateMutexA_t>(GetProcAddress(k32, "CreateMutexA"));
+    if (g_index > 0) {
+        int n = PatchGame("kernel32!CreateMutexA", reinterpret_cast<void*>(g_CreateMutexA),
+                          reinterpret_cast<void*>(&HookCreateMutexA));
+        HMODULE kb = GetModuleHandleW(L"kernelbase.dll");
+        void* kbFn = kb ? reinterpret_cast<void*>(GetProcAddress(kb, "CreateMutexA")) : nullptr;
+        if (kbFn && kbFn != reinterpret_cast<void*>(g_CreateMutexA))
+            n += PatchGame("kernelbase!CreateMutexA", kbFn, reinterpret_cast<void*>(&HookCreateMutexA));
+        if (!n)
+            Log("ATTENTION : import CreateMutexA introuvable, le 2e lancement risque d'être refusé");
+    }
+
+    // Steam (fantômes : identité dérivée ; instance principale : seulement si le pseudo est remplacé).
+    if (g_index > 0 || g_nameOverride) {
+        HMODULE sa = GetModuleHandleW(L"steam_api64.dll");
+        g_FindOrCreate = sa ? reinterpret_cast<FindOrCreate_t>(
+                                  GetProcAddress(sa, "SteamInternal_FindOrCreateUserInterface"))
+                            : nullptr;
+        BuildRelays();
+        if (!g_FindOrCreate ||
+            !PatchGame("steam_api64!SteamInternal_FindOrCreateUserInterface",
+                       reinterpret_cast<void*>(g_FindOrCreate),
+                       reinterpret_cast<void*>(&HookFindOrCreateUserInterface)))
+            Log("ATTENTION : interfaces Steam non interceptées (identité en double)");
+    }
+
+    // Réseau (toutes les instances).
+    HMODULE ws = GetModuleHandleW(L"ws2_32.dll");
+    if (!ws)
+        ws = LoadLibraryW(L"ws2_32.dll");
+    g_bind = reinterpret_cast<bind_t>(GetProcAddress(ws, "bind"));
+    g_sendto = reinterpret_cast<sendto_t>(GetProcAddress(ws, "sendto"));
+    g_WSASendTo = reinterpret_cast<WSASendTo_t>(GetProcAddress(ws, "WSASendTo"));
+    g_WSAIoctl = reinterpret_cast<WSAIoctl_t>(GetProcAddress(ws, "WSAIoctl"));
+    PatchGame("ws2_32!bind", reinterpret_cast<void*>(g_bind), reinterpret_cast<void*>(&HookBind));
+    PatchGame("ws2_32!sendto", reinterpret_cast<void*>(g_sendto), reinterpret_cast<void*>(&HookSendTo));
+    PatchGame("ws2_32!WSASendTo", reinterpret_cast<void*>(g_WSASendTo), reinterpret_cast<void*>(&HookWSASendTo));
+    g_recvfrom = reinterpret_cast<recvfrom_t>(GetProcAddress(ws, "recvfrom"));
+    PatchGame("ws2_32!recvfrom", reinterpret_cast<void*>(g_recvfrom), reinterpret_cast<void*>(&HookRecvFrom));
+
+    // Marque l'emplacement comme occupé pour que fantome.exe choisisse le numéro suivant.
+    wchar_t slot[64];
+    swprintf(slot, 64, L"Local\\DLFantome_slot_%d", g_slot);
+    CreateMutexW(nullptr, FALSE, slot);
+    Log("installation terminée");
+}
+
+}  // namespace
+
+BOOL APIENTRY DllMain(HMODULE mod, DWORD reason, LPVOID)
+{
+    if (reason == DLL_PROCESS_ATTACH) {
+        DisableThreadLibraryCalls(mod);
+        Install();
+    }
+    return TRUE;
+}

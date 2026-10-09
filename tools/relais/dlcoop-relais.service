@@ -1,0 +1,37 @@
+# Service systemd du relais DLCoop (installé par tools/relais/deployer.sh).
+# Mots de passe des sessions : /etc/dlcoop-relais.env (RELAIS_MOTS_DE_PASSE=a,b), lisible par root seulement.
+# Journal : journalctl -u dlcoop-relais -f
+[Unit]
+Description=Relais DLCoop (coop Dying Light 1.55 sans VPN)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/dlcoop-relais
+EnvironmentFile=/etc/dlcoop-relais.env
+Restart=always
+RestartSec=2
+# Aucun droit particulier : utilisateur temporaire, système en lecture seule, pas d'accès aux dossiers personnels.
+DynamicUser=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
