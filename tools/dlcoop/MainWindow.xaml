@@ -5,7 +5,7 @@
         WindowStartupLocation="CenterScreen" Background="{StaticResource Fond}" FontSize="13"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
     <Window.Resources>
-        <!-- Texte clair pour les libellés de la fenêtre seulement (pas dans les boutons ni les listes). -->
+        <!-- Light text for the window labels only (not inside buttons or lists). -->
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Texte}"/>
         </Style>
@@ -20,10 +20,10 @@
             <Setter Property="Margin" Value="0,4,8,0"/>
         </Style>
     </Window.Resources>
-    <!-- Simple : emplacement du jeu, serveur, mot de passe ; le reste dans des menus dépliants fermés. -->
+    <!-- Simple: game location, server, password; the rest in collapsed expanders. -->
     <StackPanel Margin="12">
 
-        <!-- Jeu -->
+        <!-- Game -->
         <Border Style="{StaticResource Section}">
             <StackPanel>
                 <TextBlock Style="{StaticResource Titre}" Text="Game location"/>
@@ -44,7 +44,7 @@
             </StackPanel>
         </Border>
 
-        <!-- Serveur : renseigné = relais Internet ; vide = réseau local (ou VPN). -->
+        <!-- Server: filled in = Internet relay; empty = local network (or VPN). -->
         <Border Style="{StaticResource Section}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -67,7 +67,7 @@
             </Grid>
         </Border>
 
-        <!-- Options secondaires -->
+        <!-- Secondary options -->
         <Expander Header="Player name">
             <StackPanel>
                 <CheckBox x:Name="HideName" Content="Hide my Steam name" Checked="UpdateState" Unchecked="UpdateState"/>
@@ -104,7 +104,7 @@
             </StackPanel>
         </Expander>
 
-        <!-- Lancement -->
+        <!-- Launch -->
         <Button x:Name="LaunchButton" Content="Launch" FontSize="14" Padding="22,6" Margin="0,6,0,0"
                 Style="{StaticResource BoutonPrincipal}" Click="Launch" IsDefault="True"/>
         <TextBlock x:Name="Status" Margin="0,8,0,0" TextWrapping="Wrap" FontSize="12" TextAlignment="Center"
