@@ -2,8 +2,6 @@
 
 ### Play Dying Light 1.55 (Steam) in co-op with up to 32 players.
 
-![Co-op session with the mod: the local player in the foreground, other players lined up against a wall, the teammate list on the left](assets/screenshot.png)
-
 - **Up to 32 players** (+1 Night Hunter) instead of 4.
 - **Auto-teleport** stragglers to the mission gather point.
 - **Be the Zombie** working and rebalanced for any number of hunters.
@@ -11,7 +9,11 @@
 - **Just one launcher** — install, set options, play.
 - **Free.**
 
-Includes everything you need:
+![Co-op session with the mod: the local player in the foreground, other players lined up against a wall, the teammate list on the left](assets/screenshot.png)
+
+
+
+In this repo :
 
 - **`coop6.dll`** — the mod.
 - **`DLCoop.exe`** — the launcher: installs the mod and starts the game.
