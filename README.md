@@ -17,7 +17,7 @@ In this repo :
 
 - **`coop6.dll`** — the mod.
 - **`DLCoop.exe`** — the launcher: installs the mod and starts the game.
-- **a relay server** — play over the Internet, no VPN, no port forwarding. Install on a small VPS and set the IP address of it in the game launcher to make your own lobbies.
+- **a relay server** — play over the Internet, no VPN, no port forwarding. Install on a small VPS and set it's IP address in the game launcher to make your own easy access lobbies. (not required to play)
 
 Personal mod, **not affiliated with Techland**.
 
