@@ -27,7 +27,10 @@ namespace DLCoop
             Display(s);
             ServerAddress.TextChanged += (o, e) => UpdateState(null, null);
             UpdateState(null, null);
-            if (!string.IsNullOrEmpty(gameMessage))
+            string missing = Launcher.MissingFiles();
+            if (missing.Length > 0)
+                SetStatus(missing, "Erreur");  // right at startup, before the first "Install mod"
+            else if (!string.IsNullOrEmpty(gameMessage))
                 SetStatus(gameMessage, "Accent");
             relayTimer.Tick += (o, e) => UpdateRelay();
             relayTimer.Start();
@@ -152,7 +155,8 @@ namespace DLCoop
             if (extra && !internet)
                 MultiInstance.IsChecked = true;  // a 2nd instance on this PC requires the local addresses
             MultiInstance.IsEnabled = !internet;  // relay: local addresses always used
-            ServerAddress.IsEnabled = SessionPassword.IsEnabled = internet;
+            // ServerAddress and SessionPassword always stay enabled: disabling them while the address is empty made the
+            // field impossible to fill in (package without server.txt, 1.3.7). Without a server the password is ignored.
             UpdateRelay();
         }
 

@@ -126,6 +126,20 @@ namespace DLCoop
 
         public static string Folder => AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
 
+        /// <summary>Error message if a DLL of the package is missing next to DLCoop.exe, otherwise "". Common case:
+        /// DLCoop.exe started from the zip opened in Explorer, which only extracts the exe to
+        /// %TEMP%\…_DLCoop_x.y.z.zip.DLCoop_x.y.z.zip\ (without the DLLs).</summary>
+        public static string MissingFiles()
+        {
+            string missing = InstalledFiles.FirstOrDefault(f => !File.Exists(Path.Combine(Folder, f)));
+            if (missing == null)
+                return "";
+            if (Folder.IndexOf(".zip", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "DLCoop is running from inside the zip: extract the whole zip first (right-click → Extract All), " +
+                       "then run DLCoop.exe from the extracted folder.";
+            return missing + " is missing next to DLCoop.exe: extract the whole zip again (your antivirus may also have removed it).";
+        }
+
         /// <summary>All DyingLightGame.exe found: Steam uninstall key, Steam libraries
         /// (libraryfolders.vdf + appmanifest_239140.acf for the real folder name), default folder.</summary>
         public static List<string> FindGames()
@@ -268,12 +282,9 @@ namespace DLCoop
             string dir = GameDir(s);
             if (dir.Length == 0 || !File.Exists(s.Game))
                 throw new InvalidOperationException("Dying Light was not found: please select DyingLightGame.exe.");
-            foreach (string f in InstalledFiles)
-            {
-                string src = Path.Combine(Folder, f);
-                if (!File.Exists(src))
-                    throw new InvalidOperationException(f + " is missing next to DLCoop.exe (reinstall DLCoop).");
-            }
+            string missing = MissingFiles();
+            if (missing.Length > 0)
+                throw new InvalidOperationException(missing);
             // DLML's dsound.dll: if active it may affect the lobby. We do not touch it (the README warns about
             // it); here we only install our winmm loader.
             foreach (string f in InstalledFiles)

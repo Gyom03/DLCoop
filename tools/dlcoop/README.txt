@@ -9,6 +9,8 @@ Files
   logs\               created on first launch
 
 Install / uninstall
+  Extract the whole zip first (right-click -> Extract All): DLCoop.exe started from inside the zip cannot see
+  the DLL files next to it.
   "Install mod" copies winmm.dll, dlcoop_reseau.dll and coop6.dll into the game folder ("Launch" also does it
   if needed). At every launch, DLCoop writes all the settings to dlmods.ini in the game folder.
   Once installed, the mod is also active when the game is started from Steam (with the last saved settings).
