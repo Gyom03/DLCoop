@@ -25,8 +25,7 @@ Personal mod, **not affiliated with Techland**.
 
 1. Dying Light **1.55** (Steam), Windows 10/11 64-bit. If DLML is installed, disable it (rename its `dsound.dll`).
 2. Download `DLCoop_<version>.zip` from **Releases** and unzip it.
-3. Run `DLCoop.exe` → **Install mod**, enter the **Server IP** and **session password** → **Launch**. Leave
-   *Server IP* empty for LAN or a LAN-style VPN.
+3. Run `DLCoop.exe` → **Install mod**, enter the **Server IP** and **session password** → **Launch**. *There is one free public server provided by me, just enter this IP : 51.79.69.69*
 4. Set you game visibility to LAN. The host creates a co-op game; others join with **Quick match**. Every player needs the mod.
 
 > **LAN only** (including through the relay, which the game sees as LAN) — Dying Light uses VAC, so never play this in
