@@ -22,6 +22,11 @@ Our proxy `winmm.dll`:
    - section `[loader]`, key `Mods=`: the **mod DLLs** to load, in order (default `dlcoop_reseau.dll;coop6.dll`);
 3. loads those DLLs from its own folder.
 
+Steps 2 and 3 only happen in **`DyingLightGame.exe`** (1.3.10): anywhere else the DLL is only a proxy. It also sits next
+to `DLCoop.exe` in the package; a DLCoop that loaded `winmm` used to load `dlcoop_reseau.dll`, which took the instance 0
+lock ("The main instance is already running" on a local network / VPN). DLCoop also preloads the System32 `winmm` at
+startup.
+
 The mods are unchanged: `coop6.dll` already reads `COOP6_<KEY>` first, then `coop6.ini`; `dlcoop_reseau.dll` reads the
 `DLF_*`. The proxy sets those variables from `[env]` **only if they are absent**: the per-instance values set by the
 launcher (inherited by the game) win; the file is used for a direct launch (Steam).

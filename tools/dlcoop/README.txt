@@ -36,7 +36,8 @@ Window
   Server IP           relay server: no VPN, nothing to open on your router. Keep DLCoop open while playing:
                       it carries the game traffic ("Close after launch" only minimizes it, and it closes itself
                       when the game is closed).
-                      Leave it EMPTY to play on a local network or a LAN-style VPN (Radmin VPN...).
+                      To play on a local network or a LAN-style VPN (Radmin VPN...), tick
+                      "Play over a VPN or local network" at the bottom of "More options".
   Session password    the same for every player of the group.
 
   Folded menus (click to open), usually not needed:
@@ -49,6 +50,9 @@ Window
                       Night Hunter of Be the Zombie is not counted; it only matters for the host).
                       "Disable the EOS connection" (recommended: avoids freezes at startup) and
                       "Close after launch".
+                      "Play over a VPN or local network": no relay server (Server IP and password are cleared
+                      and greyed out); the game keeps its usual network behavior, only the LAN join fix
+                      (port 0) stays active. All players of the group must use the same VPN network.
 
   Co-op is always set up for up to 32 players + 1 Night Hunter (difficulty, colors, HUD: always on).
 

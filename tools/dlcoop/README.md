@@ -30,10 +30,12 @@ The DLLs are built in `out\dlcoop\obj` (no clash with running instances that loc
   "Launch"; the rest is in three collapsed expanders (dark `Expander` style in `App.xaml`): "Player name" (hidden
   display name, `DLF_NOM`), "Instance" (main / additional `DLF_INDEX`, several instances on this PC `DLF_LOOPBACK`) and
   "More options" ("Max players when I host" 2..32, saved: `COOP6_Places` = value + 1 for the zombie; "Disable the EOS
-  connection" `COOP6_SansEos`; "Close after launch"). Instance choices return to their defaults on each start. Co-op up
+  connection" `COOP6_SansEos`; "Close after launch"; last, "Play over a VPN or local network", saved as `Vpn`). Instance choices return to their defaults on each start. Co-op up
   to 32 players (`Launcher.MaxInstances` = 33 slots); difficulty, colors, HUD and diagnostics always on.
-- **Network**: no explicit choice — a filled-in server = Internet relay (`Relay.cs`, server `tools/relais/`); an empty
-  field = local network or VPN (original behavior). With the relay, the launcher becomes the relay agent (it connects,
+- **Network**: a filled-in server = Internet relay (`Relay.cs`, server `tools/relais/`); an empty field = local network
+  or VPN (original behavior). Since 1.3.9, an explicit "Play over a VPN or local network" checkbox (bottom of "More
+  options") clears and greys out Server IP / password (given back if unticked in the same session); `Vpn=1` also
+  ignores `server.txt`; launch without the relay, `DLF_LOOPBACK=0`, no `DLF_ADRESSE` → only the port 0 fix applies. With the relay, the launcher becomes the relay agent (it connects,
   requests an address 0..32 for each launched game and passes it via `DLF_ADRESSE`, and holds the remote players'
   addresses on `127.0.0.N`). It must stay open during the game: "Close after launch" minimizes it, and it closes itself
   when the last game closes. The relay address is pre-filled from `server.txt` (`build.ps1 -Relais <ip>`); the session

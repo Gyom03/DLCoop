@@ -10,7 +10,7 @@
 // gen_def.py, included below). Nothing to copy next to the game. No code here for those functions; this file
 // only holds the entry point.
 //
-// On load, this DLL:
+// On load, and only in DyingLightGame.exe (anywhere else: plain proxy to the system winmm), this DLL:
 //   1. reads dlmods.ini (next to it):
 //        [env]    KEY=VALUE  -> environment variable KEY set in the game process;
 //        [loader] Mods=a.dll;b.dll -> mod DLLs to load (default: dlcoop_reseau.dll;coop6.dll);
@@ -32,6 +32,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <string>
 #include <vector>
 
@@ -154,6 +155,17 @@ bool HookEntry()
     return true;
 }
 
+// The game process? The DLL also sits next to DLCoop.exe (package): any program of that folder that loads winmm
+// (DLCoop on some PCs) would otherwise load the mods, including dlcoop_reseau.dll, which takes the
+// Local\DLFantome_slot_0 lock → "The main instance is already running" on a local network / VPN.
+bool IsGame()
+{
+    wchar_t exe[MAX_PATH];
+    DWORD n = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    const wchar_t* name = wcsrchr(exe, L'\\');
+    return n > 0 && n < MAX_PATH && name && _wcsicmp(name + 1, L"DyingLightGame.exe") == 0;
+}
+
 }  // namespace
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
@@ -161,6 +173,8 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     if (reason == DLL_PROCESS_ATTACH) {
         g_self = inst;
         DisableThreadLibraryCalls(inst);
+        if (!IsGame())
+            return TRUE;  // proxy only (exports forwarded to System32)
         // reserved != nullptr: static load, at process startup (entry point not run yet). Otherwise (a late
         // LoadLibrary): a separate thread.
         if (!(reserved && HookEntry())) {

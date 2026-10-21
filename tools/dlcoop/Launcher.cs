@@ -29,6 +29,7 @@ namespace DLCoop
         public bool DisableEos = true;
         public bool CloseAfterLaunch = true;
         public int MaxPlayers = Launcher.MaxInstances - 1;  // max human players when hosting (the BtZ zombie on top)
+        public bool Vpn;                    // local network / VPN (Radmin...) chosen: no relay, server and password cleared
         public bool Internet;               // Internet relay (Relay.cs): inferred from the server (filled in = relay)
         public string Server = "";          // relay address (ip[:port]); default: server.txt next to the exe
         public string Password = "";        // session password (the same for every player)
@@ -50,7 +51,12 @@ namespace DLCoop
             s.ExtraInstance = defaults.ExtraInstance;
             s.Instance = defaults.Instance;
             s.MultiInstance = defaults.MultiInstance;
-            if (string.IsNullOrWhiteSpace(s.Server))
+            if (s.Vpn)
+            {
+                s.Server = "";
+                s.Password = "";
+            }
+            else if (string.IsNullOrWhiteSpace(s.Server))
             {
                 // Package prepared for a group: relay address provided (build.ps1 -Relais).
                 try
@@ -579,5 +585,15 @@ namespace DLCoop
                                           IntPtr env, string dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
         [DllImport("kernel32.dll")]
         static extern bool CloseHandle(IntPtr h);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr LoadLibraryW(string path);
+
+        /// <summary>
+        /// Loads the System32 winmm.dll right away: the package's one (the game loader), next to DLCoop.exe, can no
+        /// longer be picked if DLCoop loads winmm later (a system sound is enough on some PCs). An older loader then
+        /// loaded the mods, and dlcoop_reseau.dll took the instance 0 lock.
+        /// </summary>
+        public static void PreloadSystemWinmm() =>
+            LoadLibraryW(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), LoaderDll));
     }
 }

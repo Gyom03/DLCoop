@@ -50,6 +50,7 @@ namespace DLCoop
             DisableEos.IsChecked = v.DisableEos;
             MaxPlayers.SelectedItem = v.MaxPlayers.ToString();
             CloseAfterLaunch.IsChecked = v.CloseAfterLaunch;
+            UseVpn.IsChecked = v.Vpn;
             UpdateGame();
         }
 
@@ -61,9 +62,10 @@ namespace DLCoop
             s.ExtraInstance = ExtraInstance.IsChecked == true;
             s.Instance = InstanceNumber.SelectedIndex;  // 0 = auto
             s.MultiInstance = MultiInstance.IsChecked == true;
-            s.Server = ServerAddress.Text.Trim();
+            s.Vpn = UseVpn.IsChecked == true;
+            s.Server = s.Vpn ? "" : ServerAddress.Text.Trim();
             s.Internet = s.Server.Length > 0;  // server filled in: relay; empty: local network / VPN
-            s.Password = SessionPassword.Text;
+            s.Password = s.Vpn ? "" : SessionPassword.Text;
             s.DisableEos = DisableEos.IsChecked == true;
             if (MaxPlayers.SelectedItem is string max)
                 s.MaxPlayers = int.Parse(max);
@@ -150,14 +152,44 @@ namespace DLCoop
             if (hide && string.IsNullOrWhiteSpace(DisplayName.Text))
                 DisplayName.Text = Launcher.RandomName();
             bool extra = ExtraInstance.IsChecked == true;
-            bool internet = ServerAddress.Text.Trim().Length > 0;
+            bool internet = UseVpn.IsChecked != true && ServerAddress.Text.Trim().Length > 0;
             InstanceNumber.IsEnabled = extra;
             if (extra && !internet)
                 MultiInstance.IsChecked = true;  // a 2nd instance on this PC requires the local addresses
             MultiInstance.IsEnabled = !internet;  // relay: local addresses always used
-            // ServerAddress and SessionPassword always stay enabled: disabling them while the address is empty made the
-            // field impossible to fill in (package without server.txt, 1.3.7). Without a server the password is ignored.
+            // ServerAddress and SessionPassword stay enabled outside VPN mode: disabling them while the address is empty
+            // made the field impossible to fill in (package without server.txt, 1.3.7). Without a server the password is
+            // ignored. Only the VPN checkbox greys them out (UseVpnChanged).
             UpdateRelay();
+        }
+
+        // Values cleared by the VPN checkbox, given back if it is unticked in the same session (never saved).
+        string serverBeforeVpn = "", passwordBeforeVpn = "";
+
+        /// <summary>VPN / local network: server and password cleared and greyed out, the game keeps its usual
+        /// addresses (no relay, no 127.0.0.N address); only the port 0 fix stays active.</summary>
+        void UseVpnChanged(object sender, RoutedEventArgs e)
+        {
+            if (ServerAddress == null || SessionPassword == null)
+                return;  // during InitializeComponent
+            bool vpn = UseVpn.IsChecked == true;
+            if (vpn)
+            {
+                if (ServerAddress.Text.Length > 0 || SessionPassword.Text.Length > 0)
+                {
+                    serverBeforeVpn = ServerAddress.Text;
+                    passwordBeforeVpn = SessionPassword.Text;
+                }
+                ServerAddress.Text = "";
+                SessionPassword.Text = "";
+            }
+            else if (ServerAddress.Text.Length == 0 && SessionPassword.Text.Length == 0)
+            {
+                ServerAddress.Text = serverBeforeVpn;
+                SessionPassword.Text = passwordBeforeVpn;
+            }
+            ServerAddress.IsEnabled = SessionPassword.IsEnabled = !vpn;
+            UpdateState(null, null);
         }
 
         void UpdateRelay()

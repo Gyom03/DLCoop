@@ -101,6 +101,7 @@ namespace DLCoop
 
         void OnStartup(object sender, StartupEventArgs e)
         {
+            Launcher.PreloadSystemWinmm();  // first of all: never the package's loader in this process
             var args = e.Args;
             bool direct = false;
             int count = 1;

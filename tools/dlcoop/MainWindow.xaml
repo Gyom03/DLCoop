@@ -58,7 +58,7 @@
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Style="{StaticResource Libelle}" Text="Server IP" Margin="0,0,8,0"/>
                 <TextBox Grid.Row="0" Grid.Column="1" x:Name="ServerAddress"
-                         ToolTip="Relay server address, for example 203.0.113.10 — leave empty to play on a local network"/>
+                         ToolTip="Relay server address, for example 203.0.113.10 — for a VPN or a local network, see More options"/>
                 <TextBlock Grid.Row="1" Style="{StaticResource Libelle}" Text="Session password"/>
                 <TextBox Grid.Row="1" Grid.Column="1" x:Name="SessionPassword" Margin="0,4,0,0" MaxLength="64"
                          ToolTip="The same for every player of the group"/>
@@ -101,6 +101,9 @@
                 </StackPanel>
                 <CheckBox x:Name="DisableEos" Content="Disable the EOS connection (recommended)"/>
                 <CheckBox x:Name="CloseAfterLaunch" Content="Close after launch"/>
+                <CheckBox x:Name="UseVpn" Content="Play over a VPN or local network (Radmin VPN, Hamachi…)"
+                          Checked="UseVpnChanged" Unchecked="UseVpnChanged"
+                          ToolTip="No relay server: the game uses its usual network addresses (only the LAN port fix stays active)"/>
             </StackPanel>
         </Expander>
 
